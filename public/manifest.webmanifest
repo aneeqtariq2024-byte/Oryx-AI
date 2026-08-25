@@ -1,0 +1,18 @@
+{
+  "name": "Oryx AI — Workspace Studio",
+  "short_name": "Oryx AI",
+  "description": "Your intelligent AI workspace — Boss Agent auto-routing across Claude, Groq, Gemini, OpenRouter & NVIDIA.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#171717",
+  "theme_color": "#212121",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

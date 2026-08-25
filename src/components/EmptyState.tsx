@@ -2,54 +2,110 @@
 
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Sparkles } from 'lucide-react';
+import { Code2, PenLine, ImagePlus, BookOpen, Lightbulb, MessageSquare } from 'lucide-react';
+import OryxLogo from './OryxLogo';
 
 interface EmptyStateProps {
   onSelectSuggestion: (text: string) => void;
 }
 
-export default function EmptyState({ onSelectSuggestion }: EmptyStateProps) {
-  return (
-    <div className="flex-1 flex flex-col items-center justify-center min-h-[75vh] px-4 text-center select-none">
-      {/* Animated Glowing AI Logo Orb */}
-      <motion.div
-        initial={{ scale: 0.7, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="relative flex items-center justify-center mb-8"
-      >
-        {/* Ambient glow rings */}
-        <div className="absolute w-36 h-36 bg-indigo-600/20 rounded-full blur-3xl pointer-events-none animate-ambient" />
-        <div className="absolute w-24 h-24 bg-purple-500/20 rounded-full blur-2xl pointer-events-none animate-pulse" />
+const SUGGESTIONS = [
+  {
+    icon: Code2,
+    label: 'Build a landing page',
+    prompt: 'Build me a modern, responsive SaaS landing page with hero section, features, pricing and footer',
+  },
+  {
+    icon: Lightbulb,
+    label: 'Brainstorm ideas',
+    prompt: 'Brainstorm 10 creative startup ideas for 2026 and pick the best one with reasons',
+  },
+  {
+    icon: ImagePlus,
+    label: 'Generate an image',
+    prompt: 'Generate image of a futuristic city skyline at sunset with neon lights',
+  },
+  {
+    icon: PenLine,
+    label: 'Write code',
+    prompt: 'Write a Python script that renames all files in a folder with a numbered prefix',
+  },
+  {
+    icon: BookOpen,
+    label: 'Explain a concept',
+    prompt: 'Explain how HTTPS works in simple terms with a fun analogy',
+  },
+  {
+    icon: MessageSquare,
+    label: 'Chat with me',
+    prompt: 'Give me a warm greeting and tell me what you can help me build today',
+  },
+];
 
-        {/* Main logo icon */}
-        <div className="relative w-20 h-20 rounded-3xl bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/40 flex items-center justify-center shadow-2xl shadow-indigo-500/30 group">
-          <Sparkles className="w-9 h-9 text-white" />
+export default function EmptyState({ onSelectSuggestion }: EmptyStateProps) {
+  const hour = new Date().getHours();
+  const greeting = hour < 5 ? 'Working late?' : hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center min-h-[70vh] px-4 select-none">
+      {/* Logo */}
+      <motion.div
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="relative flex items-center justify-center mb-6"
+      >
+        <div className="absolute w-32 h-32 bg-indigo-500/15 rounded-full blur-3xl pointer-events-none animate-ambient" />
+        <div className="relative w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-500/10">
+          <OryxLogo size={58} />
         </div>
       </motion.div>
 
-      {/* Main Heading */}
+      {/* Greeting */}
       <motion.h1
-        initial={{ opacity: 0, y: 14 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-        className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-white mb-4 leading-tight"
+        transition={{ duration: 0.4, delay: 0.08 }}
+        className="text-2xl md:text-3xl font-semibold tracking-tight text-[#ececec] mb-2"
       >
-        What can I help you{' '}
-        <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-emerald-400 bg-clip-text text-transparent">
-          build today?
+        <span className="bg-gradient-to-r from-indigo-300 via-purple-300 to-indigo-300 bg-clip-text text-transparent">
+          {greeting}
         </span>
+        {' — what can I help with?'}
       </motion.h1>
 
-      {/* Subtitle */}
       <motion.p
-        initial={{ opacity: 0, y: 14 }}
+        initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.18 }}
-        className="text-zinc-400 text-base md:text-lg max-w-lg font-medium leading-relaxed"
+        transition={{ duration: 0.4, delay: 0.14 }}
+        className="text-sm text-[#afafaf] mb-8 max-w-md text-center"
       >
-        Powered by Oryx AI Neural Engine and high-speed workspace intelligence.
+        Ask anything, or pick a starter below — Oryx AI can chat, code, and build full websites.
       </motion.p>
+
+      {/* Suggestions */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 w-full max-w-2xl"
+      >
+        {SUGGESTIONS.map((s, i) => (
+          <button
+            key={i}
+            onClick={() => onSelectSuggestion(s.prompt)}
+            className="group flex items-center gap-3 p-3.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.09] border border-white/10 hover:border-white/20 text-left transition-all hover:-translate-y-0.5"
+          >
+            <div className="p-2 rounded-lg bg-indigo-500/15 text-indigo-300 group-hover:bg-indigo-500/25 transition-colors shrink-0">
+              <s.icon size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-[#ececec]">{s.label}</div>
+              <div className="text-[11px] text-[#8f8f8f] truncate">{s.prompt}</div>
+            </div>
+          </button>
+        ))}
+      </motion.div>
     </div>
   );
 }

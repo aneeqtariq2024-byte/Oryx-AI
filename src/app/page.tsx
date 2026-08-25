@@ -9,7 +9,17 @@ import ChatInput from '@/components/ChatInput';
 import CommandPalette from '@/components/CommandPalette';
 import OryxLogo from '@/components/OryxLogo';
 import { ChatSession, ChatMessage, ModelOption } from '@/types/chat';
+import { BOSS_MODEL } from '@/lib/models';
 import { supabase } from '@/lib/supabase';
+import {
+  loadSessionsFromDB,
+  upsertSessionToDB,
+  deleteSessionFromDB,
+  updateSessionInDB,
+  loadMessagesFromDB,
+  insertMessageToDB,
+  deleteMessagesForSession,
+} from '@/lib/chatStorage';
 import {
   Settings,
   HelpCircle,
@@ -45,6 +55,10 @@ import {
   Archive,
   Edit2,
   Check,
+  Zap,
+  Layers,
+  Cpu,
+  Smartphone,
 } from 'lucide-react';
 
 interface Project {
@@ -62,14 +76,7 @@ interface ProjectFile {
   type: string;
 }
 
-const DEFAULT_MODEL: ModelOption = {
-  id: 'llama-3.3-70b-versatile',
-  name: 'Groq Llama 3.3 70B',
-  description: 'Blazing fast institutional reasoning via Groq',
-  speed: 'Lightning',
-  context: '128k',
-  icon: 'Zap',
-};
+const DEFAULT_MODEL: ModelOption = BOSS_MODEL as ModelOption;
 
 export default function Home() {
   // ---- Auth ----
@@ -94,7 +101,43 @@ export default function Home() {
   const [prompt, setPrompt] = useState('');
 
   // ---- Views & Projects ----
-  const [currentView, setCurrentView] = useState<'chat' | 'projects'>('chat');
+  const [currentView, setCurrentView] = useState<'chat' | 'projects' | 'cloudbrain' | 'getapp'>('chat');
+
+  // ---- PWA install ----
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Register service worker (enables install + offline)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    const onBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    const onInstalled = () => {
+      setIsAppInstalled(true);
+      setInstallPrompt(null);
+    };
+    window.addEventListener('beforeinstallprompt', onBeforeInstall);
+    window.addEventListener('appinstalled', onInstalled);
+    // Already installed? (launched as standalone app)
+    if (window.matchMedia('(display-mode: standalone)').matches) setIsAppInstalled(true);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onBeforeInstall);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (!installPrompt) return;
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === 'accepted') triggerToast('Oryx AI app installed! 🎉');
+    setInstallPrompt(null);
+  };
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [projectInstructionsMap, setProjectInstructionsMap] = useState<Record<string, string>>({});
@@ -112,6 +155,12 @@ export default function Home() {
 
   // ---- Modals & Command Palette ----
   const [isCmdOpen, setIsCmdOpen] = useState(false);
+  // Streaming state — Stop button + AbortController
+  const [isGenerating, setIsGenerating] = useState(false);
+  // Image mode toggle — forces every prompt to generate an image (ChatGPT-style)
+  const [imageMode, setImageMode] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [showNewProjectModal, setShowNewProjectModal] = useState(false);
   const [newProjName, setNewProjName] = useState('');
   const [newProjDesc, setNewProjDesc] = useState('');
@@ -123,6 +172,74 @@ export default function Home() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsActiveTab, setSettingsActiveTab] = useState<'general' | 'profile' | 'data' | 'about'>('general');
   const [themePreference, setThemePreference] = useState<'dark' | 'light' | 'system'>('dark');
+
+  // Apply theme to body and persist in localStorage
+  useEffect(() => {
+    const body = document.body;
+    body.classList.remove('theme-light', 'theme-dark', 'theme-system');
+    if (themePreference === 'light') {
+      body.classList.add('theme-light');
+    } else if (themePreference === 'system') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (!prefersDark) body.classList.add('theme-light');
+    }
+    localStorage.setItem('oryx_theme', themePreference);
+  }, [themePreference]);
+
+  // Load theme from localStorage on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('oryx_theme') as 'dark' | 'light' | 'system' | null;
+    if (saved) setThemePreference(saved);
+  }, []);
+
+  // API Keys state
+  const [keyStatuses, setKeyStatuses] = useState<Record<string, boolean>>({});
+  const [keyInputs, setKeyInputs] = useState<Record<string, string>>({});
+  const [savingKeyName, setSavingKeyName] = useState<string | null>(null);
+
+  const fetchKeyStatuses = async () => {
+    try {
+      const res = await fetch('/api/keys');
+      const data = await res.json();
+      if (data.statuses) setKeyStatuses(data.statuses);
+    } catch (e) {
+      console.error('Failed to fetch key statuses', e);
+    }
+  };
+
+  // Refresh Cloud Brain statuses whenever the view opens
+  useEffect(() => {
+    if (currentView === 'cloudbrain') fetchKeyStatuses();
+  }, [currentView]);
+
+  // Auto-scroll to bottom whenever messages update (smooth scroll during streaming)
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
+  }, [messagesMap, activeSessionId]);
+
+  const handleSaveKey = async (envName: string) => {
+    const value = (keyInputs[envName] || '').trim();
+    if (!value) return;
+    setSavingKeyName(envName);
+    try {
+      const res = await fetch('/api/keys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: envName, value }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to save');
+      setKeyStatuses(data.statuses || keyStatuses);
+      setKeyInputs((prev) => ({ ...prev, [envName]: '' }));
+      triggerToast('Brain connected — Boss Agent can use it now');
+    } catch (err: any) {
+      triggerToast(err.message || 'Failed to save key');
+    } finally {
+      setSavingKeyName(null);
+    }
+  };
 
   // Toast State
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -139,27 +256,13 @@ export default function Home() {
     onConfirm: () => void;
   } | null>(null);
 
-  // ---- Hydrate Data from LocalStorage ----
+  // ---- Hydrate Data: Supabase (sessions) + LocalStorage (projects, pinned, etc.) ----
   useEffect(() => {
     try {
       const savedProjects = localStorage.getItem('oryx_projects');
       if (savedProjects) setProjects(JSON.parse(savedProjects));
-
-      const savedSessions = localStorage.getItem('oryx_sessions');
-      if (savedSessions) setSessions(JSON.parse(savedSessions));
-
-      const savedMessages = localStorage.getItem('oryx_messages_map');
-      if (savedMessages) setMessagesMap(JSON.parse(savedMessages));
-
-      const savedPinned = localStorage.getItem('oryx_pinned');
-      if (savedPinned) setPinnedIds(JSON.parse(savedPinned));
-
-      const savedArchived = localStorage.getItem('oryx_archived');
-      if (savedArchived) setArchivedIds(JSON.parse(savedArchived));
-
       const savedInstructions = localStorage.getItem('oryx_project_instructions');
       if (savedInstructions) setProjectInstructionsMap(JSON.parse(savedInstructions));
-
       const savedFiles = localStorage.getItem('oryx_project_files');
       if (savedFiles) setProjectFilesMap(JSON.parse(savedFiles));
     } catch (e) {
@@ -167,26 +270,29 @@ export default function Home() {
     }
   }, []);
 
+  // Load chat sessions from Supabase when user logs in
+  useEffect(() => {
+    if (!user) {
+      setSessions([]);
+      setMessagesMap({});
+      setPinnedIds([]);
+      setArchivedIds([]);
+      return;
+    }
+    (async () => {
+      const dbSessions = await loadSessionsFromDB(user.id);
+      setSessions(dbSessions);
+      const pinnedFromDB = dbSessions.filter((s: any) => s.pinned).map((s: any) => s.id);
+      const archivedFromDB = dbSessions.filter((s: any) => s.archived).map((s: any) => s.id);
+      if (pinnedFromDB.length) setPinnedIds(pinnedFromDB);
+      if (archivedFromDB.length) setArchivedIds(archivedFromDB);
+    })();
+  }, [user]);
+
   // ---- Persist Data on Changes ----
   useEffect(() => {
     localStorage.setItem('oryx_projects', JSON.stringify(projects));
   }, [projects]);
-
-  useEffect(() => {
-    localStorage.setItem('oryx_sessions', JSON.stringify(sessions));
-  }, [sessions]);
-
-  useEffect(() => {
-    localStorage.setItem('oryx_messages_map', JSON.stringify(messagesMap));
-  }, [messagesMap]);
-
-  useEffect(() => {
-    localStorage.setItem('oryx_pinned', JSON.stringify(pinnedIds));
-  }, [pinnedIds]);
-
-  useEffect(() => {
-    localStorage.setItem('oryx_archived', JSON.stringify(archivedIds));
-  }, [archivedIds]);
 
   useEffect(() => {
     localStorage.setItem('oryx_project_instructions', JSON.stringify(projectInstructionsMap));
@@ -196,11 +302,44 @@ export default function Home() {
     localStorage.setItem('oryx_project_files', JSON.stringify(projectFilesMap));
   }, [projectFilesMap]);
 
+  // ---- Global keyboard shortcuts ----
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsCmdOpen((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Load messages for active session
+  useEffect(() => {
+    if (!activeSessionId || !user) return;
+    if (messagesMap[activeSessionId]) return; // already loaded locally
+    (async () => {
+      const msgs = await loadMessagesFromDB(activeSessionId, user.id);
+      if (msgs.length > 0) {
+        setMessagesMap((prev) => ({ ...prev, [activeSessionId]: msgs }));
+      }
+    })();
+  }, [activeSessionId, user]);
+
   // ---- Check Supabase Session on Mount ----
   useEffect(() => {
+    // Fallback: if Supabase is slow or offline, don't block the user
+    const timeout = setTimeout(() => {
+      setAuthLoading(false);
+    }, 800);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
+      clearTimeout(timeout);
+    }).catch(() => {
+      setAuthLoading(false);
+      clearTimeout(timeout);
     });
 
     const {
@@ -208,9 +347,13 @@ export default function Home() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
+      clearTimeout(timeout);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   // ---- Auth Handlers ----
@@ -328,16 +471,22 @@ export default function Home() {
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newId);
     setCurrentView('chat');
+    if (user) upsertSessionToDB(newSession, user.id);
   };
 
   const handleTogglePin = (id: string) => {
-    setPinnedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    setPinnedIds((prev) => {
+      const isNowPinned = !prev.includes(id);
+      if (user) updateSessionInDB(id, { pinned: isNowPinned });
+      return isNowPinned ? [...prev, id] : prev.filter((item) => item !== id);
+    });
   };
 
   const handleArchiveSession = (id: string) => {
-    setArchivedIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setArchivedIds((prev) => {
+      if (user) updateSessionInDB(id, { archived: true });
+      return prev.includes(id) ? prev : [...prev, id];
+    });
     if (activeSessionId === id) {
       const remaining = sessions.filter((s) => s.id !== id && !archivedIds.includes(s.id));
       if (remaining.length > 0) setActiveSessionId(remaining[0].id);
@@ -345,16 +494,19 @@ export default function Home() {
   };
 
   const handleUnarchiveSession = (id: string) => {
+    if (user) updateSessionInDB(id, { archived: false });
     setArchivedIds((prev) => prev.filter((item) => item !== id));
   };
 
   const handleRenameSession = (id: string, newTitle: string) => {
+    if (user) updateSessionInDB(id, { title: newTitle });
     setSessions((prev) =>
       prev.map((s) => (s.id === id ? { ...s, title: newTitle } : s))
     );
   };
 
   const handleMoveToProject = (sessionId: string, projectId: string) => {
+    if (user) updateSessionInDB(sessionId, { project_id: projectId });
     setSessions((prev) =>
       prev.map((s) => (s.id === sessionId ? { ...s, projectId } : s))
     );
@@ -362,6 +514,7 @@ export default function Home() {
   };
 
   const handleDeleteSession = (id: string) => {
+    if (user) deleteSessionFromDB(id);
     const remaining = sessions.filter((s) => s.id !== id);
     setSessions(remaining);
     setPinnedIds((prev) => prev.filter((item) => item !== id));
@@ -418,6 +571,14 @@ export default function Home() {
     setProjPrompt('');
     setCurrentView('chat');
 
+    // Save to DB
+    if (user) {
+      const fallbackTitle = textToSend.trim().slice(0, 30) + (textToSend.length > 30 ? '...' : '');
+      const activeSess = sessions.find(s => s.id === targetSessionId) || { id: targetSessionId, title: fallbackTitle, projectId: projId || activeProjectId || undefined, updatedAt: new Date().toISOString() };
+      upsertSessionToDB({ ...activeSess, updatedAt: new Date().toISOString() }, user.id);
+      insertMessageToDB(userMsg, targetSessionId, user.id);
+    }
+
     // Rename title if default
     const currentSession = sessions.find((s) => s.id === targetSessionId);
     if (!currentSession || currentSession.title === 'New Conversation') {
@@ -429,6 +590,11 @@ export default function Home() {
       // Collect project context instructions if chat belongs to a project
       const linkedProjId = currentSession?.projectId || projId || activeProjectId;
       const customInstruction = linkedProjId ? projectInstructionsMap[linkedProjId] : undefined;
+      const streamMsgId = thinkingMsg.id;
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsGenerating(true);
 
       const res = await fetch('/api/generate', {
         method: 'POST',
@@ -438,30 +604,183 @@ export default function Home() {
           model: selectedModel.id,
           systemInstruction: customInstruction,
           history: currentMsgs.map((m) => ({ role: m.role, content: m.content })),
+          stream: !imageMode,
+          imageMode: !!imageMode,
         }),
+        signal: controller.signal,
       });
 
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         throw new Error(data.error || `Server returned status ${res.status}`);
       }
 
-      const assistantText = data.text || data.html || 'No response text generated.';
-
-      const finalAssistantMsg: ChatMessage = {
-        id: (Date.now() + 2).toString(),
-        role: 'assistant',
-        content: assistantText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      const finalize = (
+        text: string,
+        modelUsed?: string,
+        msgType?: 'chat' | 'image',
+        imageUrl?: string,
+        imagePrompt?: string,
+        taskMode?: string
+      ) => {
+        setMessagesMap((prev) => {
+          const msgs = prev[targetSessionId] || [];
+          const newAssistantMsg: ChatMessage = {
+            id: (Date.now() + 2).toString(),
+            role: 'assistant',
+            content: text,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            modelUsed,
+            type: msgType,
+            imageUrl,
+            imagePrompt,
+            taskMode,
+          };
+          
+          if (user) insertMessageToDB(newAssistantMsg, targetSessionId, user.id);
+          
+          return {
+            ...prev,
+            [targetSessionId]: [
+              ...msgs.filter((m) => !m.isThinking && m.id !== streamMsgId),
+              newAssistantMsg,
+            ],
+          };
+        });
       };
 
-      setMessagesMap((prev) => {
-        const msgs = prev[targetSessionId] || [];
-        const withoutThinking = msgs.filter((m) => !m.isThinking);
-        return { ...prev, [targetSessionId]: [...withoutThinking, finalAssistantMsg] };
-      });
+      const contentType = res.headers.get('content-type') || '';
+
+      if (contentType.includes('text/event-stream') && res.body) {
+        // ---- Live SSE streaming ----
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let full = '';
+
+        const patchStream = (text: string, modelUsed?: string) => {
+          setMessagesMap((prev) => {
+            const msgs = prev[targetSessionId] || [];
+            return {
+              ...prev,
+              [targetSessionId]: msgs.map((m) =>
+                m.id === streamMsgId ? { ...m, content: text, isThinking: false, modelUsed: modelUsed ?? m.modelUsed } : m
+              ),
+            };
+          });
+        };
+
+        let streamModelUsed: string | undefined;
+        let streamTaskMode: string | undefined;
+
+        const patchStreamTask = (taskMode: string, modelUsed?: string) => {
+          setMessagesMap((prev) => {
+            const msgs = prev[targetSessionId] || [];
+            return {
+              ...prev,
+              [targetSessionId]: msgs.map((m) =>
+                m.id === streamMsgId ? { ...m, taskMode, modelUsed: modelUsed ?? m.modelUsed } : m
+              ),
+            };
+          });
+        };
+
+        // Throttle UI updates: batch stream chunks into ~50ms frames so the
+        // page doesn't re-render on every single SSE token (causes lag)
+        let queuedFull = '';
+        let flushTimer: ReturnType<typeof setTimeout> | null = null;
+        const flushStream = () => {
+          if (flushTimer) return;
+          flushTimer = setTimeout(() => {
+            flushTimer = null;
+            if (queuedFull) patchStream(queuedFull, streamModelUsed);
+          }, 50);
+        };
+
+        let wasAborted = false;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (!trimmed.startsWith('data:')) continue;
+              const data = trimmed.slice(5).trim();
+              if (data === '[DONE]') continue;
+              try {
+                const json = JSON.parse(data);
+                if (json.error) throw new Error(json.error);
+                if (json.status === 'model' && json.model) {
+                  // Boss Agent announced its model choice + detected task mode
+                  streamModelUsed = `${json.model} · ${json.provider}`;
+                  if (json.categoryLabel) {
+                    streamTaskMode = json.categoryLabel as string;
+                    patchStreamTask(streamTaskMode, streamModelUsed);
+                  }
+                  patchStream('', streamModelUsed);
+                } else if (json.status === 'done' && json.modelUsed) {
+                  streamModelUsed = json.modelUsed;
+                } else if (json.text) {
+                  full += json.text;
+                  queuedFull = full;
+                  flushStream();
+                }
+              } catch (e: any) {
+                if (e instanceof SyntaxError) continue;
+                throw e;
+              }
+            }
+          }
+        } catch (streamErr: any) {
+          if (streamErr?.name === 'AbortError') {
+            wasAborted = true;
+          } else {
+            throw streamErr;
+          }
+        }
+        if (flushTimer) clearTimeout(flushTimer);
+        if (full.trim()) {
+          finalize(
+            wasAborted ? `${full}\n\n*⏹ Generation stopped*` : full,
+            streamModelUsed,
+            'chat',
+            undefined,
+            undefined,
+            streamTaskMode
+          );
+        } else if (wasAborted) {
+          // Stopped before anything streamed — just drop the thinking bubble
+          setMessagesMap((prev) => {
+            const msgs = prev[targetSessionId] || [];
+            return { ...prev, [targetSessionId]: msgs.filter((m) => m.id !== streamMsgId) };
+          });
+        } else {
+          throw new Error('Stream returned empty response');
+        }
+      } else {
+        // ---- JSON fallback (image gen, errors, non-stream) ----
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        const msgType = data.type === 'image' ? 'image' : 'chat';
+        finalize(
+          data.text || data.html || 'No response text generated.',
+          data.modelUsed,
+          msgType,
+          data.imageUrl,
+          data.imagePrompt,
+          data.categoryLabel
+        );
+      }
     } catch (err: any) {
+      if (err?.name === 'AbortError') {
+        // Handled inside the stream loop — just clean up
+        setIsGenerating(false);
+        abortRef.current = null;
+        return;
+      }
       console.error(err);
       const errorMsg: ChatMessage = {
         id: (Date.now() + 2).toString(),
@@ -475,11 +794,61 @@ export default function Home() {
         const withoutThinking = msgs.filter((m) => !m.isThinking);
         return { ...prev, [targetSessionId]: [...withoutThinking, errorMsg] };
       });
+    } finally {
+      setIsGenerating(false);
+      abortRef.current = null;
     }
   };
 
   const handleSend = () => {
     handleSendPromptText(prompt);
+  };
+
+  // Stop the in-flight generation (keeps whatever streamed so far)
+  const handleStopGeneration = () => {
+    abortRef.current?.abort();
+  };
+
+  // ChatGPT-style edit: truncate conversation at that message and put text back in composer
+  const handleEditMessage = (msg: ChatMessage) => {
+    if (!activeSessionId) return;
+    const msgs = messagesMap[activeSessionId] || [];
+    const idx = msgs.findIndex((m) => m.id === msg.id);
+    if (idx === -1) return;
+    setMessagesMap((prev) => ({ ...prev, [activeSessionId]: msgs.slice(0, idx) }));
+    setPrompt(msg.content);
+    setCurrentView('chat');
+  };
+
+  // Export the current chat as a Markdown file
+  const handleExportChat = () => {
+    if (!activeSessionId) {
+      triggerToast('Nothing to export yet');
+      return;
+    }
+    const msgs = messagesMap[activeSessionId] || [];
+    if (msgs.length === 0) {
+      triggerToast('Nothing to export yet');
+      return;
+    }
+    const session = sessions.find((s) => s.id === activeSessionId);
+    const md = [
+      `# ${session?.title || 'Oryx Chat'}`,
+      `*Exported from Oryx AI Workspace — ${new Date().toLocaleString()}*`,
+      ...msgs.map((m) =>
+        m.role === 'user'
+          ? `## 🧑 You\n\n${m.content}`
+          : `## 🤖 Oryx AI\n\n${m.content}`
+      ),
+    ].join('\n\n');
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${(session?.title || 'oryx-chat').replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+    triggerToast('Chat exported as Markdown');
   };
 
   // Upload file for Project Memory
@@ -521,18 +890,6 @@ export default function Home() {
     (s) => s.projectId === activeProjectId && !archivedIds.includes(s.id)
   );
 
-  // ---- Auth Loading Screen ----
-  if (authLoading) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-zinc-100">
-        <OryxLogo size={42} className="animate-pulse mb-4" />
-        <div className="flex items-center gap-2 text-xs font-semibold text-zinc-400">
-          <span className="w-2 h-2 rounded-full bg-indigo-500 animate-ping" />
-          Initializing Oryx AI Workspace...
-        </div>
-      </div>
-    );
-  }
 
   // ---- Auth Screen (Login / Signup) ----
   if (!user) {
@@ -673,7 +1030,7 @@ export default function Home() {
 
   // ---- Render Main App Workspace ----
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex overflow-hidden font-sans relative select-none">
+    <div className="min-h-screen bg-[#212121] text-[#ececec] flex overflow-hidden font-sans relative select-none">
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/70 z-20 md:hidden backdrop-blur-sm"
@@ -702,6 +1059,10 @@ export default function Home() {
         onUnarchiveSession={handleUnarchiveSession}
         currentView={currentView}
         onSwitchView={setCurrentView}
+        onSelectProject={(id) => {
+          setActiveProjectId(id);
+          setCurrentView('projects');
+        }}
         projects={projects}
         setProjects={setProjects}
         showNewProjectModal={showNewProjectModal}
@@ -726,13 +1087,23 @@ export default function Home() {
         user={user}
         onOpenSettings={() => setShowSettingsModal(true)}
         onOpenSearch={() => setIsCmdOpen(true)}
+        onOpenCloudBrain={() => setCurrentView('cloudbrain')}
+        onOpenGetApp={() => setCurrentView('getapp')}
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-screen overflow-hidden relative w-full bg-zinc-950">
+      <div className="flex-1 flex flex-col h-screen overflow-hidden relative w-full bg-[#212121]">
+        {/* Ambient background glow — unique Oryx touch */}
+        <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-[640px] h-[280px] bg-indigo-500/[0.06] rounded-full blur-[110px] animate-ambient" />
+        <div className="pointer-events-none absolute bottom-10 -right-20 w-[420px] h-[420px] bg-purple-500/[0.05] rounded-full blur-[100px]" />
+
         <Header
           title={
-            currentView === 'projects'
+            currentView === 'cloudbrain'
+              ? 'Cloud Brain'
+              : currentView === 'getapp'
+              ? 'Get the App'
+              : currentView === 'projects'
               ? currentProject
                 ? currentProject.name
                 : 'Projects Workspace'
@@ -748,10 +1119,250 @@ export default function Home() {
           onOpenSearch={() => setIsCmdOpen(true)}
           isSidebarOpen={sidebarOpen}
           onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
+          onExportChat={handleExportChat}
         />
 
         <div className="flex-1 overflow-y-auto flex flex-col custom-scrollbar">
-          {currentView === 'projects' ? (
+          {currentView === 'getapp' ? (
+            /* ---- GET THE APP — install on Android & Windows ---- */
+            <div className="flex-1 max-w-3xl mx-auto w-full px-4 md:px-8 py-10">
+              <div className="text-center mb-10">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-xl shadow-indigo-500/25 mb-5">
+                  <Smartphone size={28} className="text-white" />
+                </div>
+                <h1 className="text-3xl md:text-4xl font-extrabold text-white tracking-tight">Get the App</h1>
+                <p className="text-sm text-[#afafaf] mt-3 max-w-lg mx-auto leading-relaxed">
+                  Install <span className="text-indigo-400 font-semibold">Oryx AI</span> as a real app on your phone or
+                  PC — works offline, opens in its own window, auto-updates, and gets a home-screen icon.
+                </p>
+                {isAppInstalled && (
+                  <div className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                    <CheckCircle2 size={14} /> App is installed on this device
+                  </div>
+                )}
+              </div>
+
+              {/* One-tap install (browser supports prompt) */}
+              {installPrompt && (
+                <div className="mb-6 rounded-2xl border border-indigo-500/40 bg-indigo-500/10 p-5 text-center">
+                  <h3 className="text-sm font-bold text-white mb-1">⚡ One-Tap Install Available</h3>
+                  <p className="text-xs text-[#afafaf] mb-4">Your browser detected Oryx AI as an installable app.</p>
+                  <button
+                    onClick={handleInstallApp}
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-indigo-600/30 transition-colors"
+                  >
+                    Install Oryx AI Now
+                  </button>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Android */}
+                <div className="rounded-2xl bg-[#2B2926]/60 border border-white/[0.07] p-5 space-y-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-green-500/15 border border-green-500/30 flex items-center justify-center shrink-0">
+                      <svg viewBox="0 0 24 24" className="w-5 h-5 fill-green-400">
+                        <path d="M17.6 9.48l1.84-3.18c.16-.31.04-.69-.26-.85-.29-.15-.65-.06-.83.22l-1.88 3.24c-1.45-.63-3.07-1-4.47-1-1.4 0-3.02.37-4.47 1L5.65 5.67c-.18-.28-.54-.37-.83-.22-.3.16-.42.54-.26.85L6.4 9.48C3.3 11.25 1.28 14.44 1 18h22c-.28-3.56-2.3-6.75-5.4-8.52zM7 15.25c-.69 0-1.25-.56-1.25-1.25S6.31 12.75 7 12.75s1.25.56 1.25 1.25S7.69 15.25 7 15.25zm10 0c-.69 0-1.25-.56-1.25-1.25s.56-1.25 1.25-1.25 1.25.56 1.25 1.25-.56 1.25-1.25 1.25z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">Android — APK-style App</h3>
+                      <p className="text-[11px] text-[#8f8b84]">Home-screen icon · fullscreen · offline</p>
+                    </div>
+                  </div>
+                  <ol className="text-xs text-[#c9c5bd] space-y-2 list-decimal list-inside leading-relaxed">
+                    <li>Open <code className="text-indigo-300">http://192.168.100.25:3000</code> in <b>Chrome</b> on your phone (same WiFi)</li>
+                    <li>Tap the <b>⋮ menu</b> (top-right)</li>
+                    <li>Tap <b>"Install app"</b> or <b>"Add to Home screen"</b></li>
+                    <li>Oryx AI icon appears — opens like a native APK app 🎉</li>
+                  </ol>
+                </div>
+
+                {/* Windows */}
+                <div className="rounded-2xl bg-[#2B2926]/60 border border-white/[0.07] p-5 space-y-4">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-11 h-11 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center shrink-0">
+                      <svg viewBox="0 0 24 24" className="w-5 h-5 fill-blue-400">
+                        <path d="M0 3.449L9.75 2.1v9.451H0m10.949-9.602L24 0v11.4H10.949M0 12.6h9.75v9.351L0 20.699M10.949 12.6H24V24l-12.9-1.801"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-white">Windows — .exe-style App</h3>
+                      <p className="text-[11px] text-[#8f8b84]">Own window · taskbar pin · Start menu</p>
+                    </div>
+                  </div>
+                  <ol className="text-xs text-[#c9c5bd] space-y-2 list-decimal list-inside leading-relaxed">
+                    <li>Open <b>http://localhost:3000</b> in <b>Edge</b> or <b>Chrome</b> on this PC</li>
+                    <li>Click the <b>install icon ⊕</b> in the address bar (or menu → <b>Apps → Install</b>)</li>
+                    <li>Click <b>Install</b></li>
+                    <li>Oryx AI opens in its own window — pin it like any .exe app 🎉</li>
+                  </ol>
+                </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl bg-white/[0.03] border border-white/[0.07] p-4 text-[11px] text-[#8f8b84] leading-relaxed">
+                <b className="text-[#c9c5bd]">Why PWA instead of raw APK/.exe files?</b> The app is a full-stack AI
+                workspace (server + 5 AI providers) — PWA install gives you the same home-screen icon, own window and
+                offline shell <b>instantly on both platforms</b>, stays auto-updated, and works from any device on your
+                WiFi. Building a store-ready native APK/.exe additionally requires Android Studio / Electron packaging
+                on this machine.
+              </div>
+            </div>
+          ) : currentView === 'cloudbrain' ? (
+            /* ---- CLOUD BRAIN — AI provider hub (Claude-style) ---- */
+            <div className="flex-1 max-w-4xl mx-auto w-full px-4 md:px-8 py-10">
+              {/* Hero */}
+              <div className="text-center mb-10">
+                <div className="mx-auto w-16 h-16 rounded-2xl bg-gradient-to-tr from-[#D97757] to-[#B85C3E] flex items-center justify-center shadow-xl shadow-[#D97757]/25 mb-5">
+                  <Brain size={30} className="text-white" />
+                </div>
+                <h1 className="font-serif text-3xl md:text-4xl font-bold text-[#FAF9F5] tracking-tight">
+                  Cloud Brain
+                </h1>
+                <p className="text-sm text-[#A8A49C] mt-3 max-w-lg mx-auto leading-relaxed">
+                  Connect your AI providers once — <span className="text-[#D97757] font-semibold">Boss Agent</span>{' '}
+                  automatically routes every task to the best connected brain, and switches when a free tier runs dry.
+                </p>
+
+                <div className="flex flex-wrap items-center justify-center gap-2.5 mt-6">
+                  <span className="px-3.5 py-1.5 rounded-full bg-[#D97757]/10 border border-[#D97757]/25 text-[#D97757] text-xs font-semibold">
+                    {Object.values(keyStatuses).filter(Boolean).length} of 5 brains connected
+                  </span>
+                  <span className="px-3.5 py-1.5 rounded-full bg-white/5 border border-white/10 text-[#A8A49C] text-xs font-semibold">
+                    {Object.values(keyStatuses).filter(Boolean).length * 2}+ models in Boss pool
+                  </span>
+                </div>
+              </div>
+
+              {/* Provider cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  {
+                    provider: 'Claude',
+                    envName: 'ANTHROPIC_API_KEY',
+                    models: 'Sonnet 4 · Haiku 3.5 — elite coding & writing',
+                    link: 'https://console.anthropic.com/settings/keys',
+                    note: 'Anthropic Console → API Keys',
+                    icon: <Sparkles size={18} className="text-[#D97757]" />,
+                    iconBg: 'bg-[#D97757]/15 border border-[#D97757]/30',
+                    featured: true,
+                  },
+                  {
+                    provider: 'Groq',
+                    envName: 'GROQ_API_KEY',
+                    models: 'Llama 3.3 70B · DeepSeek R1 — lightning fast',
+                    link: 'https://console.groq.com/keys',
+                    note: 'Free tier · daily rate limits',
+                    icon: <Zap size={18} className="text-amber-400" />,
+                    iconBg: 'bg-amber-500/15 border border-amber-500/30',
+                  },
+                  {
+                    provider: 'Gemini',
+                    envName: 'GEMINI_API_KEY',
+                    models: '2.0 Flash · 1.5 Pro — 1M+ context',
+                    link: 'https://aistudio.google.com/apikey',
+                    note: 'Google AI Studio · generous free tier',
+                    icon: <Sparkles size={18} className="text-blue-400" />,
+                    iconBg: 'bg-blue-500/15 border border-blue-500/30',
+                  },
+                  {
+                    provider: 'OpenRouter',
+                    envName: 'OPENROUTER_API_KEY',
+                    models: 'DeepSeek V3 · Llama 3.3 — 300+ models',
+                    link: 'https://openrouter.ai/settings/keys',
+                    note: 'Free models · daily caps',
+                    icon: <Layers size={18} className="text-purple-400" />,
+                    iconBg: 'bg-purple-500/15 border border-purple-500/30',
+                  },
+                  {
+                    provider: 'NVIDIA',
+                    envName: 'NVIDIA_API_KEY',
+                    models: 'Nemotron 70B · Qwen Coder — NIM engine',
+                    link: 'https://build.ngc.nvidia.com',
+                    note: 'NVIDIA NIM · free API credits',
+                    icon: <Cpu size={18} className="text-emerald-400" />,
+                    iconBg: 'bg-emerald-500/15 border border-emerald-500/30',
+                  },
+                ].map((p) => {
+                  const configured = keyStatuses[p.provider];
+                  return (
+                    <div
+                      key={p.envName}
+                      className={`rounded-2xl p-5 space-y-4 transition-all ${
+                        configured
+                          ? 'bg-[#2B2926] border border-[#D97757]/25 shadow-lg shadow-[#D97757]/5'
+                          : 'bg-[#2B2926]/60 border border-white/[0.07] hover:border-white/15'
+                      } ${p.featured ? 'md:col-span-2' : ''}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3.5 min-w-0">
+                          <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${p.iconBg}`}>
+                            {p.icon}
+                          </div>
+                          <div className="min-w-0">
+                            <h3 className="font-serif text-base font-semibold text-[#FAF9F5] leading-tight">
+                              {p.provider}
+                              {p.featured && (
+                                <span className="ml-2 text-[9px] font-sans font-bold px-1.5 py-0.5 rounded-full bg-[#D97757]/15 text-[#D97757] border border-[#D97757]/30 align-middle">
+                                  RECOMMENDED
+                                </span>
+                              )}
+                            </h3>
+                            <p className="text-[11px] text-[#A8A49C] mt-0.5 truncate">{p.models}</p>
+                          </div>
+                        </div>
+                        <span
+                          className={`shrink-0 inline-flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
+                            configured
+                              ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                              : 'bg-white/5 text-[#8f8b84] border-white/10'
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${configured ? 'bg-emerald-400 animate-pulse' : 'bg-[#5c5850]'}`} />
+                          {configured ? 'Connected' : 'Not connected'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="password"
+                          placeholder={configured ? 'Paste new key to replace…' : 'Paste API key to connect this brain…'}
+                          value={keyInputs[p.envName] || ''}
+                          onChange={(e) => setKeyInputs((prev) => ({ ...prev, [p.envName]: e.target.value }))}
+                          onKeyDown={(e) => e.key === 'Enter' && handleSaveKey(p.envName)}
+                          className="flex-1 min-w-0 bg-black/25 border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-[#FAF9F5] placeholder-[#6e6a63] focus:outline-none focus:border-[#D97757]/60 font-mono"
+                        />
+                        <button
+                          onClick={() => handleSaveKey(p.envName)}
+                          disabled={!keyInputs[p.envName]?.trim() || savingKeyName === p.envName}
+                          className="px-4 py-2.5 bg-[#D97757] hover:bg-[#c96a4b] disabled:opacity-40 disabled:hover:bg-[#D97757] text-white rounded-xl text-xs font-semibold transition-colors shrink-0"
+                        >
+                          {savingKeyName === p.envName ? 'Connecting…' : configured ? 'Replace' : 'Connect'}
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="text-[#8f8b84]">{p.note}</span>
+                        <a
+                          href={p.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[#D97757] hover:text-[#e08a6c] font-semibold"
+                        >
+                          Get API Key ↗
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <p className="text-center text-[11px] text-[#77746d] mt-8 leading-relaxed">
+                🔒 Keys are stored locally in <code className="text-[#A8A49C]">.env.local</code> on your machine only —
+                active instantly, no restart needed.
+              </p>
+            </div>
+          ) : currentView === 'projects' ? (
             activeProjectId && currentProject ? (
               /* ---- CLAUDE STYLE PROJECT WORKSPACE (REFERENCE IMAGE 3) ---- */
               <div className="p-4 md:p-8 max-w-6xl mx-auto w-full space-y-6">
@@ -1058,12 +1669,21 @@ export default function Home() {
               }}
             />
           ) : (
-            <ChatCanvas messages={activeMessages} />
+            <ChatCanvas messages={activeMessages} onEditMessage={handleEditMessage} />
           )}
+          <div ref={messagesEndRef} className="h-px" />
         </div>
 
         {currentView === 'chat' && (
-          <ChatInput prompt={prompt} setPrompt={setPrompt} onSend={handleSend} />
+          <ChatInput
+            prompt={prompt}
+            setPrompt={setPrompt}
+            onSend={handleSend}
+            isGenerating={isGenerating}
+            onStop={handleStopGeneration}
+            imageMode={imageMode}
+            setImageMode={setImageMode}
+          />
         )}
       </div>
 
@@ -1072,12 +1692,15 @@ export default function Home() {
         isOpen={isCmdOpen}
         onClose={() => setIsCmdOpen(false)}
         sessions={visibleSessions}
+        messagesMap={messagesMap}
         onSelectSession={(id) => {
           setActiveSessionId(id);
           setCurrentView('chat');
         }}
         onNewChat={handleNewChat}
         onSwitchView={setCurrentView}
+        onOpenCloudBrain={() => setCurrentView('cloudbrain')}
+        onExportChat={handleExportChat}
       />
 
       {/* New Project Modal */}
@@ -1279,6 +1902,16 @@ export default function Home() {
                           <Moon size={15} /> Dark
                         </button>
                         <button
+                          onClick={() => setThemePreference('light')}
+                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
+                            themePreference === 'light'
+                              ? 'bg-indigo-500/10 border-indigo-500/40 text-indigo-400'
+                              : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
+                          }`}
+                        >
+                          <Sun size={15} /> Light
+                        </button>
+                        <button
                           onClick={() => setThemePreference('system')}
                           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-semibold transition-colors ${
                             themePreference === 'system'
@@ -1291,14 +1924,6 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div>
-                      <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider mb-3">Language</h3>
-                      <div className="flex items-center gap-3 bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-2.5">
-                        <Globe size={16} className="text-zinc-400" />
-                        <span className="text-xs text-zinc-200 font-medium">English</span>
-                        <span className="text-[10px] text-zinc-500 ml-auto">(United States)</span>
-                      </div>
-                    </div>
                   </div>
                 )}
 

@@ -14,6 +14,8 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
   const elements: React.ReactNode[] = [];
   let inList: 'ul' | 'ol' | null = null;
   let listItems: React.ReactNode[] = [];
+  // Table accumulator
+  let tableRows: string[][] = [];
 
   const flushList = (key: string) => {
     if (!inList || listItems.length === 0) return;
@@ -34,15 +36,73 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
     listItems = [];
   };
 
+  const flushTable = (key: string) => {
+    if (tableRows.length < 2) {
+      tableRows = [];
+      return;
+    }
+    const [header, ...body] = tableRows;
+    elements.push(
+      <div key={`tbl-${key}`} className="my-3 overflow-x-auto rounded-xl border border-white/10">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-white/[0.04]">
+              {header.map((cell, i) => (
+                <th key={i} className="px-3.5 py-2.5 text-left font-semibold text-white border-b border-white/10 whitespace-nowrap">
+                  {renderInline(cell.trim())}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, r) => (
+              <tr key={r} className={r % 2 === 1 ? 'bg-white/[0.02]' : ''}>
+                {row.map((cell, c) => (
+                  <td key={c} className="px-3.5 py-2.5 text-zinc-300 border-b border-white/5 last:border-b-0 align-top">
+                    {renderInline(cell.trim())}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+    tableRows = [];
+  };
+
+  const parseTableRow = (line: string): string[] | null => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('|') || !trimmed.endsWith('|')) return null;
+    return trimmed.slice(1, -1).split('|');
+  };
+
+  const isSeparatorRow = (cells: string[]) =>
+    cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c.trim()));
+
   lines.forEach((line, idx) => {
     const trimmed = line.trim();
 
     // Empty line
     if (!trimmed) {
       flushList(`flush-${idx}`);
+      flushTable(`flush-${idx}`);
       elements.push(<div key={`blank-${idx}`} className="h-2" />);
       return;
     }
+
+    // Table row
+    const tableCells = parseTableRow(line);
+    if (tableCells) {
+      flushList(`flush-${idx}`);
+      if (isSeparatorRow(tableCells)) {
+        // separator — header/body boundary, skip cells
+        return;
+      }
+      tableRows.push(tableCells);
+      return;
+    }
+    flushTable(`flush-${idx}`);
 
     // Headers
     if (trimmed.startsWith('# ')) {
@@ -144,6 +204,7 @@ export default function MarkdownRenderer({ content, className = '' }: MarkdownRe
   });
 
   flushList('end');
+  flushTable('end');
 
   return <div className={`space-y-1 ${className}`}>{elements}</div>;
 }

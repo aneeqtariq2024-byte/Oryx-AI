@@ -2,9 +2,8 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import ModelSelector from './ModelSelector';
-import OryxLogo from './OryxLogo';
 import { ModelOption } from '@/types/chat';
-import { Edit2, Check, Search, PanelLeftOpen } from 'lucide-react';
+import { Edit2, Check, Search, PanelLeftOpen, Share2, Download } from 'lucide-react';
 
 interface HeaderProps {
   title: string;
@@ -14,6 +13,7 @@ interface HeaderProps {
   onOpenSearch?: () => void;
   isSidebarOpen?: boolean;
   onToggleSidebar?: () => void;
+  onExportChat?: () => void;
 }
 
 export default function Header({
@@ -24,14 +24,13 @@ export default function Header({
   onOpenSearch,
   isSidebarOpen,
   onToggleSidebar,
+  onExportChat,
 }: HeaderProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editValue, setEditValue] = useState(title || '');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    setEditValue(title || '');
-  }, [title]);
+  useEffect(() => setEditValue(title || ''), [title]);
 
   useEffect(() => {
     if (isEditing && inputRef.current) {
@@ -48,78 +47,89 @@ export default function Header({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      handleSave();
-    } else if (e.key === 'Escape') {
+    if (e.key === 'Enter') handleSave();
+    else if (e.key === 'Escape') {
       setIsEditing(false);
       setEditValue(title || '');
     }
   };
 
+  const handleShare = () => {
+    navigator.clipboard.writeText(window.location.href);
+  };
+
   return (
-    <header className="h-14 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-xl px-4 md:px-6 flex items-center justify-between z-20 sticky top-0">
-      <div className="flex items-center gap-3">
-        {/* Toggle sidebar button if sidebar is closed */}
+    <header className="h-14 bg-[#212121] px-3 md:px-5 flex items-center justify-between z-20 sticky top-0 shrink-0">
+      <div className="flex items-center gap-2 min-w-0">
         {!isSidebarOpen && onToggleSidebar && (
-          <button
-            onClick={onToggleSidebar}
-            className="p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all mr-1 shadow-sm"
-            title="Open Sidebar"
-          >
-            <PanelLeftOpen size={18} />
-          </button>
-        )}
-
-        {/* Search button if sidebar is closed */}
-        {!isSidebarOpen && onOpenSearch && (
-          <button
-            onClick={onOpenSearch}
-            className="p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-all mr-2 shadow-sm flex items-center gap-1.5 text-xs"
-            title="Search chats (⌘K)"
-          >
-            <Search size={15} />
-            <span className="hidden sm:inline text-zinc-500 font-mono text-[10px]">⌘K</span>
-          </button>
-        )}
-
-        {/* Editable Title */}
-        <div className="flex items-center gap-2.5">
-          <OryxLogo size={22} />
-          {isEditing ? (
-            <div className="flex items-center gap-1.5">
-              <input
-                ref={inputRef}
-                type="text"
-                value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
-                onBlur={handleSave}
-                onKeyDown={handleKeyDown}
-                className="bg-zinc-900 border border-indigo-500/50 rounded-lg px-2 py-0.5 text-xs md:text-sm font-semibold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
-              />
-              <button
-                onClick={handleSave}
-                className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded transition-colors"
-                title="Save Title"
-              >
-                <Check size={15} />
-              </button>
-            </div>
-          ) : (
-            <div
-              onClick={() => setIsEditing(true)}
-              className="group flex items-center gap-1.5 cursor-pointer py-1 px-2 -ml-2 rounded-lg hover:bg-zinc-900/80 border border-transparent hover:border-zinc-800 transition-all"
-              title="Click to rename conversation"
+          <>
+            <button
+              onClick={onToggleSidebar}
+              className="p-2 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
+              title="Open Sidebar"
             >
-              <h1 className="text-xs md:text-sm font-semibold text-zinc-200 tracking-tight truncate max-w-xs sm:max-w-md group-hover:text-white">
-                {title || 'New Workspace Chat'}
-              </h1>
-              <Edit2 size={13} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-            </div>
-          )}
-        </div>
+              <PanelLeftOpen size={18} />
+            </button>
+            <button
+              onClick={onOpenSearch}
+              className="p-2 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
+              title="Search chats (⌘K)"
+            >
+              <Search size={17} />
+            </button>
+          </>
+        )}
+
+        {isEditing ? (
+          <div className="flex items-center gap-1.5">
+            <input
+              ref={inputRef}
+              type="text"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleSave}
+              onKeyDown={handleKeyDown}
+              className="bg-[#303030] border border-white/25 rounded-lg px-3 py-1.5 text-sm font-medium text-white focus:outline-none"
+            />
+            <button
+              onClick={handleSave}
+              className="p-1.5 text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors"
+              title="Save"
+            >
+              <Check size={15} />
+            </button>
+          </div>
+        ) : (
+          <div
+            onClick={() => setIsEditing(true)}
+            className="group flex items-center gap-1.5 cursor-pointer py-1.5 px-2.5 -ml-1.5 rounded-lg hover:bg-white/5 transition-colors min-w-0"
+            title="Click to rename"
+          >
+            <h1 className="text-sm font-medium text-[#ececec] tracking-tight truncate max-w-[40vw] sm:max-w-md">
+              {title || 'New chat'}
+            </h1>
+            <Edit2 size={12} className="text-[#777] opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </div>
+        )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5">
+        {onExportChat && (
+          <button
+            onClick={onExportChat}
+            className="p-2 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors hidden sm:flex items-center gap-1.5 text-xs font-medium"
+            title="Export chat as Markdown"
+          >
+            <Download size={15} />
+          </button>
+        )}
+        <button
+          onClick={handleShare}
+          className="p-2 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors hidden sm:flex items-center gap-1.5 text-xs font-medium"
+          title="Copy link"
+        >
+          <Share2 size={15} />
+        </button>
         <ModelSelector selectedModel={selectedModel} onSelectModel={onSelectModel} />
       </div>
     </header>

@@ -2,18 +2,21 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronDown, Check, Cpu, Zap, Layers, Sparkles } from 'lucide-react';
+import { ChevronDown, Check, Cpu, Zap, Layers, Sparkles, Brain, Rocket, Crown, Wifi, WifiOff } from 'lucide-react';
 import { ModelOption } from '@/types/chat';
+import { BOSS_MODEL, ALL_MODELS } from '@/lib/models';
 
-const MODELS: ModelOption[] = [
-  { id: 'llama-3.3-70b-versatile', name: 'Oryx Llama 3.3 70B', description: 'Institutional reasoning & high throughput', speed: 'Lightning', context: '128k', icon: 'Zap' },
-  { id: 'deepseek-r1-distill-llama-70b', name: 'Oryx DeepSeek R1', description: 'Ultra-fast open reasoning & code deduction', speed: 'Lightning', context: '64k', icon: 'Cpu' },
-  { id: 'gpt-5', name: 'GPT-5 Pro', description: 'Next-generation flagship reasoning engine', speed: 'Fast', context: '512k', icon: 'Cpu' },
-  { id: 'gpt-5-thinking', name: 'GPT-5 Thinking', description: 'Deep analytical and multi-step synthesis', speed: 'Deliberate', context: '1M', icon: 'Cpu' },
-  { id: 'claude-sonnet', name: 'Claude 3.5 Sonnet', description: 'Elite balance of coding and intelligence', speed: 'Fast', context: '200k', icon: 'Layers' },
-  { id: 'gemini-2-5-pro', name: 'Gemini 2.5 Pro', description: 'Native multimodal reasoning powerhouse', speed: 'Fast', context: '2M', icon: 'Cpu' },
-  { id: 'deepseek-v3', name: 'DeepSeek V3', description: 'Advanced open architecture generalist', speed: 'Fast', context: '64k', icon: 'Cpu' },
-];
+const PROVIDER_ORDER = ['Claude', 'Groq', 'Gemini', 'OpenRouter', 'NVIDIA', 'Ollama'] as const;
+
+const MODELS: ModelOption[] = ALL_MODELS.map((m) => ({
+  id: m.id,
+  name: m.name,
+  description: m.description,
+  speed: m.speed,
+  context: m.context,
+  icon: m.icon,
+  provider: m.provider,
+}));
 
 interface ModelSelectorProps {
   selectedModel: ModelOption;
@@ -23,6 +26,27 @@ interface ModelSelectorProps {
 export default function ModelSelector({ selectedModel, onSelectModel }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [ollamaStatus, setOllamaStatus] = useState<'unknown' | 'running' | 'offline'>('unknown');
+  const [installedOllamaModels, setInstalledOllamaModels] = useState<Set<string>>(new Set());
+
+  // Fetch locally installed Ollama models
+  useEffect(() => {
+    async function checkOllama() {
+      try {
+        const res = await fetch('/api/ollama-models');
+        const data = await res.json();
+        if (data.running) {
+          setOllamaStatus('running');
+          setInstalledOllamaModels(new Set(data.models));
+        } else {
+          setOllamaStatus('offline');
+        }
+      } catch {
+        setOllamaStatus('offline');
+      }
+    }
+    checkOllama();
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -34,33 +58,59 @@ export default function ModelSelector({ selectedModel, onSelectModel }: ModelSel
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getModelIcon = (iconName?: string) => {
+  const getModelIcon = (iconName?: string, size = 14) => {
     switch (iconName) {
       case 'Zap':
-        return <Zap size={14} className="text-amber-400" />;
+        return <Zap size={size} className="text-amber-400" />;
       case 'Layers':
-        return <Layers size={14} className="text-indigo-400" />;
+        return <Layers size={size} className="text-indigo-400" />;
       case 'Sparkles':
-        return <Sparkles size={14} className="text-purple-400" />;
+        return <Sparkles size={size} className="text-purple-400" />;
+      case 'Brain':
+        return <Brain size={size} className="text-emerald-400" />;
+      case 'Rocket':
+        return <Rocket size={size} className="text-rose-400" />;
       default:
-        return <Cpu size={14} className="text-emerald-400" />;
+        return <Cpu size={size} className="text-emerald-400" />;
     }
   };
+
+  const isBoss = !!selectedModel.isBoss;
+
+  // Filter: show Ollama models only if they are installed locally
+  const visibleModels = MODELS.filter((m) => {
+    if (m.provider === 'Ollama') {
+      if (ollamaStatus === 'offline') return false;
+      const modelName = m.id.replace(/^ollama\//i, '');
+      return installedOllamaModels.has(modelName);
+    }
+    return true;
+  });
 
   return (
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2.5 px-3.5 py-1.5 bg-zinc-900/90 hover:bg-zinc-800/90 border border-zinc-800/80 hover:border-zinc-700/80 rounded-full text-xs font-semibold text-zinc-200 transition-all shadow-md backdrop-blur-md group"
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all ${
+          isBoss
+            ? 'border-emerald-500/40 bg-gradient-to-r from-emerald-500/15 to-indigo-500/15 text-emerald-300'
+            : 'border-white/10 bg-[#303030]/60 hover:bg-[#303030] text-[#ececec]'
+        } text-xs font-medium`}
       >
-        <div className="flex items-center justify-center p-1 rounded-full bg-zinc-800 group-hover:bg-zinc-700 transition-colors">
-          {getModelIcon(selectedModel.icon)}
-        </div>
-        <span className="truncate max-w-[130px] sm:max-w-none">{selectedModel.name}</span>
-        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-medium border border-emerald-500/20">
-          {selectedModel.speed || 'Fast'}
-        </span>
-        <ChevronDown size={14} className={`text-zinc-400 transition-transform duration-200 ${isOpen ? 'rotate-180 text-zinc-200' : ''}`} />
+        {isBoss ? <Crown size={13} /> : null}
+        <span className="truncate max-w-[120px] sm:max-w-none">{selectedModel.name}</span>
+        {!isBoss && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
+            selectedModel.speed === 'Lightning'
+              ? 'bg-amber-500/15 text-amber-300'
+              : selectedModel.speed === 'Power'
+              ? 'bg-rose-500/15 text-rose-300'
+              : 'bg-emerald-500/15 text-emerald-300'
+          }`}>
+            {selectedModel.speed || 'Fast'}
+          </span>
+        )}
+        <ChevronDown size={13} className={`text-[#afafaf] transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       <AnimatePresence>
@@ -70,54 +120,121 @@ export default function ModelSelector({ selectedModel, onSelectModel }: ModelSel
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 6, scale: 0.97 }}
             transition={{ duration: 0.15, ease: 'easeOut' }}
-            className="absolute right-0 mt-2 w-84 bg-zinc-950/95 border border-zinc-800/90 rounded-2xl shadow-2xl overflow-hidden z-50 backdrop-blur-2xl divide-y divide-zinc-800/50"
+            className="absolute right-0 mt-2 w-[340px] bg-[#2a2a2a] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50"
           >
-            <div className="p-3 bg-zinc-900/50 flex items-center justify-between text-[11px] font-bold tracking-wider text-zinc-400 uppercase">
-              <span>Select AI Engine</span>
-              <span className="text-[10px] text-zinc-500 font-normal">7 Models Available</span>
-            </div>
+            {/* Boss Agent card */}
+            <button
+              onClick={() => {
+                onSelectModel(BOSS_MODEL as ModelOption);
+                setIsOpen(false);
+              }}
+              className={`w-full text-left m-2 p-3 rounded-xl border transition-all flex items-center gap-3 ${
+                isBoss
+                  ? 'bg-gradient-to-r from-emerald-500/20 to-indigo-500/20 border-emerald-500/40'
+                  : 'bg-white/[0.03] hover:bg-white/[0.07] border-white/10'
+              }`}
+            >
+              <div className="p-2.5 rounded-xl bg-gradient-to-tr from-emerald-500 to-indigo-500 text-white shrink-0">
+                <Crown size={18} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-[#ececec]">Boss Agent Mode</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                    AUTO
+                  </span>
+                </div>
+                <p className="text-[11px] text-[#8f8f8f] mt-0.5 leading-snug">
+                  AI analyzes your task &amp; picks the best model. Free tier finished? Auto-switches to the next best one.
+                </p>
+              </div>
+              {isBoss && <Check size={15} className="text-emerald-300 shrink-0" />}
+            </button>
 
-            <div className="max-h-80 overflow-y-auto p-1.5 space-y-1 custom-scrollbar">
-              {MODELS.map((model) => {
-                const isSelected = selectedModel.id === model.id;
+            <div className="max-h-[340px] overflow-y-auto px-2 pb-2 space-y-2 custom-scrollbar">
+              {PROVIDER_ORDER.map((prov) => {
+                if (prov === 'Ollama' && ollamaStatus === 'offline') return null;
+                const models = visibleModels.filter((m) => m.provider === prov);
+                if (!models.length) return null;
+
+                // Ollama section header with status indicator
+                const sectionHeader = prov === 'Ollama' ? (
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold tracking-wider text-[#8f8f8f] uppercase px-2 pt-1.5 pb-1">
+                    <Wifi size={10} className="text-cyan-400" />
+                    {prov} · Local
+                    <span className="text-[8px] px-1 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold">
+                      {installedOllamaModels.size} installed
+                    </span>
+                  </div>
+                ) : (
+                  <div className="text-[10px] font-semibold tracking-wider text-[#8f8f8f] uppercase px-2 pt-1.5 pb-1">{prov}</div>
+                );
+
                 return (
-                  <button
-                    key={model.id}
-                    onClick={() => {
-                      onSelectModel(model);
-                      setIsOpen(false);
-                    }}
-                    className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start justify-between group ${
-                      isSelected
-                        ? 'bg-zinc-900 border border-indigo-500/30 shadow-inner'
-                        : 'hover:bg-zinc-900/60 border border-transparent'
-                    }`}
-                  >
-                    <div className="flex gap-2.5 items-start">
-                      <div className={`p-2 rounded-lg mt-0.5 ${isSelected ? 'bg-indigo-500/20 text-indigo-400' : 'bg-zinc-900 text-zinc-400 group-hover:text-zinc-200'}`}>
-                        {getModelIcon(model.icon)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-xs font-semibold ${isSelected ? 'text-white' : 'text-zinc-300 group-hover:text-white'}`}>
-                            {model.name}
-                          </span>
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400 font-medium">
-                            {model.context}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-zinc-400 mt-0.5 line-clamp-1 group-hover:text-zinc-300">{model.description}</p>
-                      </div>
+                  <div key={prov}>
+                    {sectionHeader}
+                    <div className="space-y-0.5">
+                      {models.map((model) => {
+                        const isSelected = selectedModel.id === model.id;
+                        return (
+                          <button
+                            key={model.id}
+                            onClick={() => {
+                              onSelectModel(model);
+                              setIsOpen(false);
+                            }}
+                            className={`w-full text-left p-2.5 rounded-xl transition-all flex items-start justify-between gap-2 ${
+                              isSelected ? 'bg-white/10' : 'hover:bg-white/5'
+                            }`}
+                          >
+                            <div className="flex gap-2.5 items-start min-w-0">
+                              <div className="p-2 rounded-lg bg-white/5 mt-0.5">{getModelIcon(model.icon)}</div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-semibold text-[#ececec]">{model.name}</span>
+                                  <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold border ${
+                                    prov === 'Claude'
+                                      ? 'bg-orange-500/10 text-orange-300 border-orange-500/20'
+                                      : prov === 'Groq'
+                                      ? 'bg-amber-500/10 text-amber-300 border-amber-500/20'
+                                      : prov === 'Gemini'
+                                      ? 'bg-blue-500/10 text-blue-300 border-blue-500/20'
+                                      : prov === 'NVIDIA'
+                                      ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/20'
+                                      : prov === 'Ollama'
+                                      ? 'bg-cyan-500/10 text-cyan-300 border-cyan-500/20'
+                                      : 'bg-purple-500/10 text-purple-300 border-purple-500/20'
+                                  }`}>{prov}</span>
+                                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-white/5 text-[#afafaf] font-medium">
+                                    {model.context}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-[#8f8f8f] mt-0.5 line-clamp-1">{model.description}</p>
+                              </div>
+                            </div>
+                            {isSelected && <Check size={14} className="text-white mt-1 shrink-0" />}
+                          </button>
+                        );
+                      })}
                     </div>
-
-                    {isSelected && (
-                      <div className="p-1 rounded-full bg-indigo-500/20 text-indigo-400 mt-1 shrink-0">
-                        <Check size={14} />
-                      </div>
-                    )}
-                  </button>
+                  </div>
                 );
               })}
+
+              {/* Ollama offline notice */}
+              {ollamaStatus !== 'running' && (
+                <div className="px-2 py-2">
+                  <div className="flex items-center gap-2 p-2.5 rounded-xl bg-white/[0.03] border border-white/10">
+                    <WifiOff size={14} className="text-[#8f8f8f] shrink-0" />
+                    <div className="min-w-0">
+                      <span className="text-[10px] font-semibold text-[#8f8f8f] uppercase tracking-wider">Ollama · Local</span>
+                      <p className="text-[11px] text-[#8f8f8f] mt-0.5">
+                        {ollamaStatus === 'unknown' ? 'Checking...' : 'Ollama not running. Start it to use local models.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

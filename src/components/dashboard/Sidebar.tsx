@@ -8,7 +8,7 @@ import {
   MessageSquare,
   Pin,
   FolderKanban,
-  MoreVertical,
+  MoreHorizontal,
   Archive,
   Trash2,
   Edit2,
@@ -17,13 +17,12 @@ import {
   LogOut,
   X,
   Search,
-  ChevronLeft,
+  PanelLeftClose,
   Settings,
-  HelpCircle,
-  Download,
-  MoreHorizontal,
-  Sparkles,
-  Check,
+  ChevronDown,
+  ArchiveRestore,
+  Brain,
+  Smartphone,
 } from 'lucide-react';
 
 interface Project {
@@ -49,8 +48,9 @@ interface SidebarProps {
   onArchiveSession?: (sessionId: string) => void;
   archivedIds?: string[];
   onUnarchiveSession?: (sessionId: string) => void;
-  currentView: 'chat' | 'projects';
+  currentView: 'chat' | 'projects' | 'cloudbrain' | 'getapp';
   onSwitchView?: (view: 'chat' | 'projects') => void;
+  onSelectProject?: (projectId: string) => void;
   projects: Project[];
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   showNewProjectModal: boolean;
@@ -75,6 +75,8 @@ interface SidebarProps {
   user?: any;
   onOpenSettings?: () => void;
   onOpenSearch?: () => void;
+  onOpenCloudBrain?: () => void;
+  onOpenGetApp?: () => void;
 }
 
 export default function Sidebar({
@@ -94,6 +96,7 @@ export default function Sidebar({
   onUnarchiveSession,
   currentView,
   onSwitchView,
+  onSelectProject,
   projects,
   setProjects,
   showNewProjectModal,
@@ -118,18 +121,17 @@ export default function Sidebar({
   user,
   onOpenSettings,
   onOpenSearch,
+  onOpenCloudBrain,
+  onOpenGetApp,
 }: SidebarProps) {
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
-  const [moveProjectMenuId, setMoveProjectMenuId] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [showArchivedModal, setShowArchivedModal] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // User menu dropdown
+  const [projectsExpanded, setProjectsExpanded] = useState(true);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
 
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -137,23 +139,13 @@ export default function Sidebar({
       if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setActiveMenuId(null);
-        setMoveProjectMenuId(null);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  const isCurrentPinned = pinnedIds.includes(activeSessionId);
 
   const handleStartRename = (session: ChatSession) => {
     setRenamingId(session.id);
@@ -168,11 +160,7 @@ export default function Sidebar({
     setRenamingId(null);
   };
 
-  const filteredSessions = sessions.filter((s) =>
-    s.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
-
-  const activeSessions = filteredSessions.filter((s) => !archivedIds.includes(s.id));
+  const activeSessions = sessions.filter((s) => !archivedIds.includes(s.id));
   const pinnedSessions = activeSessions.filter((s) => pinnedIds.includes(s.id));
   const recentSessions = activeSessions.filter((s) => !pinnedIds.includes(s.id));
   const archivedSessions = sessions.filter((s) => archivedIds.includes(s.id));
@@ -182,188 +170,144 @@ export default function Sidebar({
     const isPinned = pinnedIds.includes(session.id);
     const isMenuOpen = activeMenuId === session.id;
     const isRenaming = renamingId === session.id;
-    const isMovingProject = moveProjectMenuId === session.id;
+
+    if (isRenaming) {
+      return (
+        <div key={session.id} className="px-2 py-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            className="w-full bg-zinc-800 border border-white/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-white/40"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveRename(session.id);
+              if (e.key === 'Escape') setRenamingId(null);
+            }}
+            onBlur={() => handleSaveRename(session.id)}
+          />
+        </div>
+      );
+    }
 
     return (
       <div
         key={session.id}
         onClick={() => {
-          if (!isRenaming) {
-            if (onSwitchView) onSwitchView('chat');
-            onSelectSession(session.id);
-          }
+          if (onSwitchView) onSwitchView('chat');
+          onSelectSession(session.id);
         }}
-        className={`group relative flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer text-xs transition-all ${
+        className={`group relative flex items-center rounded-lg cursor-pointer text-xs transition-colors ${
           isActive
-            ? 'bg-zinc-800/90 text-white font-medium border border-zinc-700/80 shadow-md'
-            : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 border border-transparent'
+            ? 'bg-[#2f2f2f] text-white'
+            : 'text-[#afafaf] hover:bg-[#2f2f2f]/70 hover:text-[#ececec]'
         }`}
       >
-        {isRenaming ? (
-          <div className="flex items-center gap-1.5 w-full" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="text"
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              className="w-full bg-zinc-950 border border-indigo-500/50 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleSaveRename(session.id);
-                if (e.key === 'Escape') setRenamingId(null);
-              }}
-            />
+        <div className="flex items-center gap-2 flex-1 min-w-0 px-2.5 py-2">
+          {isPinned && <Pin size={11} className="fill-amber-400 text-amber-400 shrink-0" />}
+          <span className="truncate">{session.title}</span>
+        </div>
+
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenuId(isMenuOpen ? null : session.id);
+          }}
+          className={`p-1.5 mr-1 rounded-md hover:bg-white/10 text-[#afafaf] hover:text-white transition-all ${
+            isMenuOpen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          }`}
+        >
+          <MoreHorizontal size={14} />
+        </button>
+
+        {isMenuOpen && (
+          <div
+            ref={menuRef}
+            className="absolute right-0 top-9 w-48 bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl py-1 z-50 text-[11px] text-[#ececec]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <button
-              onClick={() => handleSaveRename(session.id)}
-              className="px-2 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-semibold transition-colors"
+              onClick={() => {
+                const shareUrl = `${window.location.origin}/chat/share/${session.id}`;
+                navigator.clipboard.writeText(shareUrl);
+                triggerToast('Shareable link copied!');
+                setActiveMenuId(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
             >
-              Save
+              <Share2 size={13} className="text-[#afafaf]" /> Share
+            </button>
+            <button
+              onClick={() => handleStartRename(session)}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
+            >
+              <Edit2 size={13} className="text-[#afafaf]" /> Rename
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => {
+                  if (!projects.length) {
+                    setShowNewProjectModal(true);
+                    setActiveMenuId(null);
+                    return;
+                  }
+                  const idx = projects.findIndex((p) => p.id === session.projectId);
+                  const next = projects[(idx + 1) % projects.length];
+                  if (onMoveToProject) onMoveToProject(session.id, next.id);
+                  setActiveMenuId(null);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
+              >
+                <FolderInput size={13} className="text-[#afafaf]" /> Move to project
+                {projects.length > 0 && (
+                  <span className="ml-auto text-[10px] text-[#777] truncate max-w-[60px]">
+                    {projects.find((p) => p.id === session.projectId)?.name || '—'}
+                  </span>
+                )}
+              </button>
+            </div>
+            <button
+              onClick={() => {
+                if (onTogglePin) onTogglePin(session.id);
+                setActiveMenuId(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
+            >
+              <Pin size={13} className={isPinned ? 'fill-amber-400 text-amber-400' : 'text-[#afafaf]'} />
+              {isPinned ? 'Unpin' : 'Pin'}
+            </button>
+            <button
+              onClick={() => {
+                if (onArchiveSession) {
+                  onArchiveSession(session.id);
+                  triggerToast('Archived');
+                }
+                setActiveMenuId(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
+            >
+              <Archive size={13} className="text-[#afafaf]" /> Archive
+            </button>
+            <div className="border-t border-white/10 my-1" />
+            <button
+              onClick={() => {
+                setConfirmConfig({
+                  isOpen: true,
+                  title: 'Delete Chat',
+                  message: 'Are you sure you want to delete this chat? This action cannot be undone.',
+                  onConfirm: () => {
+                    onDeleteSession(session.id);
+                    triggerToast('Chat deleted');
+                    setConfirmConfig(null);
+                  },
+                });
+                setActiveMenuId(null);
+              }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-red-500/10 transition-colors"
+            >
+              <Trash2 size={13} /> Delete
             </button>
           </div>
-        ) : (
-          <>
-            <div className="flex items-center gap-2.5 truncate pr-6">
-              <MessageSquare
-                size={14}
-                className={isActive ? 'text-indigo-400' : 'text-zinc-500 group-hover:text-zinc-300'}
-              />
-              <span className="truncate">{session.title}</span>
-            </div>
-
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenuId(isMenuOpen ? null : session.id);
-                setMoveProjectMenuId(null);
-              }}
-              className="absolute right-2 opacity-0 group-hover:opacity-100 p-1 hover:text-white text-zinc-400 transition-opacity rounded-md hover:bg-zinc-800"
-            >
-              <MoreVertical size={13} />
-            </button>
-
-            {isMenuOpen && (
-              <div
-                ref={menuRef}
-                className="absolute right-0 top-8 w-52 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl py-1 z-50 text-[11px] text-zinc-300 backdrop-blur-2xl divide-y divide-zinc-800/50"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      const shareUrl = `${window.location.origin}/chat/share/${session.id}`;
-                      navigator.clipboard.writeText(shareUrl);
-                      triggerToast('Shareable link copied!');
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-900 transition-colors"
-                  >
-                    <Share2 size={13} className="text-zinc-400" /> Share
-                  </button>
-                  <button
-                    onClick={() => handleStartRename(session)}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-900 transition-colors"
-                  >
-                    <Edit2 size={13} className="text-zinc-400" /> Rename
-                  </button>
-                  <div className="relative">
-                    <button
-                      onClick={() => setMoveProjectMenuId(isMovingProject ? null : session.id)}
-                      className="w-full flex items-center justify-between px-3 py-1.5 hover:bg-zinc-900 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <FolderInput size={13} className="text-zinc-400" /> Move to project
-                      </div>
-                      <span className="text-[10px] text-zinc-500">▸</span>
-                    </button>
-                    {isMovingProject && (
-                      <div className="absolute right-full top-0 mr-1 w-52 bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl py-1 z-50 divide-y divide-zinc-800/50">
-                        <div className="py-1 max-h-40 overflow-y-auto custom-scrollbar">
-                          {projects.length === 0 ? (
-                            <div className="px-3 py-2 text-[11px] text-zinc-500 italic">No projects created yet</div>
-                          ) : (
-                            projects.map((proj) => (
-                              <button
-                                key={proj.id}
-                                onClick={() => {
-                                  if (onMoveToProject) onMoveToProject(session.id, proj.id);
-                                  triggerToast(`Moved to "${proj.name}"`);
-                                  setActiveMenuId(null);
-                                  setMoveProjectMenuId(null);
-                                }}
-                                className="w-full text-left px-3 py-1.5 text-xs hover:bg-zinc-900 truncate text-zinc-300 flex items-center gap-2"
-                              >
-                                <FolderKanban size={13} className="text-indigo-400 shrink-0" />
-                                <span className="truncate">{proj.name}</span>
-                              </button>
-                            ))
-                          )}
-                        </div>
-                        <div className="py-1">
-                          <button
-                            onClick={() => {
-                              setActiveMenuId(null);
-                              setMoveProjectMenuId(null);
-                              setShowNewProjectModal(true);
-                            }}
-                            className="w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-600/10 text-indigo-400 font-semibold flex items-center gap-2 transition-colors"
-                          >
-                            <Plus size={13} />
-                            <span>Create New Project</span>
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      if (onTogglePin) onTogglePin(session.id);
-                      triggerToast(isPinned ? 'Unpinned' : 'Pinned');
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-900 transition-colors"
-                  >
-                    <Pin size={13} className={isPinned ? 'fill-amber-400 text-amber-400' : 'text-zinc-400'} />
-                    {isPinned ? 'Unpin' : 'Pin'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (onArchiveSession) {
-                        onArchiveSession(session.id);
-                        triggerToast('Archived');
-                      }
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-zinc-900 transition-colors"
-                  >
-                    <Archive size={13} className="text-zinc-400" /> Archive
-                  </button>
-                </div>
-
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setConfirmConfig({
-                        isOpen: true,
-                        title: 'Delete Chat',
-                        message: 'Are you sure you want to delete this chat? This action cannot be undone.',
-                        onConfirm: () => {
-                          onDeleteSession(session.id);
-                          triggerToast('Chat deleted');
-                          setConfirmConfig(null);
-                        },
-                      });
-                      setActiveMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-red-400 hover:bg-red-500/10 transition-colors"
-                  >
-                    <Trash2 size={13} /> Delete
-                  </button>
-                </div>
-              </div>
-            )}
-          </>
         )}
       </div>
     );
@@ -372,12 +316,12 @@ export default function Sidebar({
   // ---- Closed Sidebar ----
   if (!isOpen) {
     return (
-      <aside className="w-16 bg-zinc-950 border-r border-zinc-800/80 flex flex-col items-center justify-between py-4 select-none h-screen shrink-0 z-30">
-        <div className="flex flex-col items-center gap-3.5 w-full px-2">
+      <aside className="w-[60px] bg-[#171717] border-r border-white/5 flex flex-col items-center justify-between py-3 select-none h-screen shrink-0 z-30">
+        <div className="flex flex-col items-center gap-1.5 w-full px-2">
           <button
             onClick={onToggle}
             title="Open Sidebar"
-            className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center cursor-pointer shadow-lg shadow-indigo-500/10 group transition-all hover:scale-105"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
           >
             <OryxLogo size={22} />
           </button>
@@ -386,30 +330,52 @@ export default function Sidebar({
               if (onSwitchView) onSwitchView('chat');
               onNewChat();
             }}
-            title="New Conversation"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            title="New Chat"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
           >
-            <Plus size={20} />
+            <Plus size={19} />
           </button>
           <button
             onClick={() => onOpenSearch && onOpenSearch()}
-            title="Search Conversations (⌘K)"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            title="Search (⌘K)"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
           >
-            <Search size={18} />
+            <Search size={17} />
+          </button>
+          <button
+            onClick={() => onOpenCloudBrain && onOpenCloudBrain()}
+            title="Cloud Brain"
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+              currentView === 'cloudbrain'
+                ? 'text-[#D97757] bg-[#D97757]/15'
+                : 'text-[#afafaf] hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Brain size={17} />
+          </button>
+          <button
+            onClick={() => onOpenGetApp && onOpenGetApp()}
+            title="Get the App"
+            className={`w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+              currentView === 'getapp'
+                ? 'text-indigo-300 bg-indigo-500/15'
+                : 'text-[#afafaf] hover:text-white hover:bg-white/10'
+            }`}
+          >
+            <Smartphone size={17} />
           </button>
           <button
             onClick={() => onSwitchView && onSwitchView('projects')}
-            title="Projects Workspace"
-            className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+            title="Projects"
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
           >
-            <FolderKanban size={18} />
+            <FolderKanban size={17} />
           </button>
         </div>
 
-        <div className="w-full px-2 flex flex-col items-center gap-3">
+        <div className="w-full px-2 flex flex-col items-center gap-2">
           {user && (
-            <div className="w-8 h-8 rounded-full bg-indigo-600/20 border border-indigo-500/40 text-indigo-400 font-bold flex items-center justify-center text-xs">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-semibold flex items-center justify-center text-xs">
               {user.email?.[0]?.toUpperCase() || 'U'}
             </div>
           )}
@@ -417,7 +383,7 @@ export default function Sidebar({
             <button
               onClick={onLogout}
               title="Logout"
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+              className="w-9 h-9 rounded-lg flex items-center justify-center text-[#afafaf] hover:text-red-400 hover:bg-red-500/10 transition-colors"
             >
               <LogOut size={16} />
             </button>
@@ -430,173 +396,197 @@ export default function Sidebar({
   // ---- Open Sidebar ----
   return (
     <>
-      <aside className="w-72 bg-zinc-950 border-r border-zinc-800/80 flex flex-col h-screen select-none shrink-0 z-30">
+      <aside className="w-[260px] bg-[#171717] border-r border-white/5 flex flex-col h-screen select-none shrink-0 z-30">
         {/* Header */}
-        <div className="p-3.5 flex flex-col gap-3 border-b border-zinc-800/60">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <OryxLogo size={26} />
-              <div>
-                <span className="text-xs font-bold text-zinc-100 tracking-tight">Oryx AI</span>
-                <span className="block text-[10px] text-zinc-500 font-normal">Workspace Studio</span>
-              </div>
-            </div>
-            <button
-              onClick={onToggle}
-              title="Collapse Sidebar"
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
-            >
-              <ChevronLeft size={18} />
-            </button>
+        <div className="px-3 pt-3 pb-2 flex items-center justify-between">
+          <div className="flex items-center gap-2 px-1">
+            <OryxLogo size={24} />
+            <span className="text-sm font-semibold text-[#ececec] tracking-tight">Oryx AI</span>
           </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (onSwitchView) onSwitchView('chat');
-                onNewChat();
-              }}
-              className="flex-1 flex items-center justify-center gap-2 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition-all shadow-md shadow-indigo-600/20"
-            >
-              <Plus size={15} />
-              <span>New Chat</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (activeSessionId && onTogglePin) onTogglePin(activeSessionId);
-              }}
-              title={isCurrentPinned ? 'Unpin Current Chat' : 'Pin Current Chat'}
-              className={`flex items-center justify-center p-2 rounded-xl border transition-colors ${
-                isCurrentPinned
-                  ? 'bg-amber-500/10 border-amber-500/40 text-amber-400'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-              }`}
-            >
-              <Pin size={15} className={isCurrentPinned ? 'fill-amber-400' : ''} />
-            </button>
-
-            <button
-              onClick={() => onSwitchView && onSwitchView(currentView === 'projects' ? 'chat' : 'projects')}
-              title="Toggle Projects Workspace"
-              className={`flex items-center justify-center p-2 rounded-xl border transition-colors ${
-                currentView === 'projects'
-                  ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400'
-                  : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300'
-              }`}
-            >
-              <FolderKanban size={15} />
-            </button>
-          </div>
-
-          {/* Search Button that triggers CommandPalette */}
           <button
-            onClick={() => onOpenSearch && onOpenSearch()}
-            className="w-full py-2 px-3 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800/90 rounded-xl text-xs text-zinc-400 flex items-center justify-between transition-all group shadow-sm"
+            onClick={onToggle}
+            title="Collapse Sidebar"
+            className="p-1.5 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
           >
-            <span className="flex items-center gap-2">
-              <Search size={14} className="text-zinc-500 group-hover:text-zinc-300 transition-colors" />
-              <span className="group-hover:text-zinc-200 font-medium">Search history...</span>
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700/50">⌘K</span>
+            <PanelLeftClose size={18} />
           </button>
         </div>
 
-        {/* Chat List */}
-        <div className="flex-1 overflow-y-auto px-3 py-3 space-y-4 custom-scrollbar">
+        {/* Primary actions */}
+        <div className="px-3 py-2 space-y-0.5">
+          <button
+            onClick={() => {
+              if (onSwitchView) onSwitchView('chat');
+              onNewChat();
+            }}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#ececec] hover:bg-[#2f2f2f] transition-colors"
+          >
+            <Plus size={16} className="text-[#afafaf]" />
+            <span>New chat</span>
+          </button>
+          <button
+            onClick={() => onOpenSearch && onOpenSearch()}
+            className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium text-[#ececec] hover:bg-[#2f2f2f] transition-colors"
+          >
+            <Search size={16} className="text-[#afafaf]" />
+            <span>Search chats</span>
+            <span className="ml-auto text-[10px] font-mono text-[#777]">⌘K</span>
+          </button>
+          <button
+            onClick={() => onOpenCloudBrain && onOpenCloudBrain()}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+              currentView === 'cloudbrain'
+                ? 'bg-[#D97757]/15 text-[#D97757]'
+                : 'text-[#ececec] hover:bg-[#2f2f2f]'
+            }`}
+          >
+            <Brain size={16} className={currentView === 'cloudbrain' ? 'text-[#D97757]' : 'text-[#afafaf]'} />
+            <span>Cloud Brain</span>
+            <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-[#D97757]/15 text-[#D97757] border border-[#D97757]/25">AI</span>
+          </button>
+          <button
+            onClick={() => onOpenGetApp && onOpenGetApp()}
+            className={`w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+              currentView === 'getapp'
+                ? 'bg-indigo-500/15 text-indigo-300'
+                : 'text-[#ececec] hover:bg-[#2f2f2f]'
+            }`}
+          >
+            <Smartphone size={16} className={currentView === 'getapp' ? 'text-indigo-300' : 'text-[#afafaf]'} />
+            <span>Get the App</span>
+            <span className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">NEW</span>
+          </button>
+        </div>
+
+        {/* Chats + Projects */}
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-4 custom-scrollbar">
           {pinnedSessions.length > 0 && (
             <div>
-              <div className="text-[10px] font-bold tracking-wider text-zinc-500 uppercase px-2 mb-1.5 flex items-center gap-1.5">
+              <div className="text-[11px] font-medium text-[#8f8f8f] px-2.5 mb-1 flex items-center gap-1.5">
                 <Pin size={10} className="fill-amber-400 text-amber-400" />
-                <span>Pinned Chats</span>
+                <span>Pinned</span>
               </div>
-              <div className="space-y-1">{pinnedSessions.map(renderChatItem)}</div>
+              <div className="space-y-0.5">{pinnedSessions.map(renderChatItem)}</div>
             </div>
           )}
 
           <div>
-            <div className="text-[10px] font-bold tracking-wider text-zinc-500 uppercase px-2 mb-1.5">
-              Recent Conversations
-            </div>
-            <div className="space-y-1">
+            <div className="text-[11px] font-medium text-[#8f8f8f] px-2.5 mb-1">Chats</div>
+            <div className="space-y-0.5">
               {recentSessions.length === 0 ? (
-                <div className="px-2 py-3 text-xs text-zinc-600 text-center bg-zinc-900/30 rounded-xl border border-dashed border-zinc-800/50">
-                  No conversations yet
-                </div>
+                <div className="px-2.5 py-2 text-[11px] text-[#777]">No conversations yet</div>
               ) : (
                 recentSessions.map(renderChatItem)
               )}
             </div>
           </div>
+
+          {/* Projects */}
+          <div>
+            <button
+              onClick={() => setProjectsExpanded(!projectsExpanded)}
+              className="w-full flex items-center gap-1.5 text-[11px] font-medium text-[#8f8f8f] px-2.5 mb-1 hover:text-[#ececec] transition-colors"
+            >
+              <ChevronDown
+                size={12}
+                className={`transition-transform ${projectsExpanded ? '' : '-rotate-90'}`}
+              />
+              <span>Projects</span>
+              <span className="text-[#777]">({projects.length})</span>
+            </button>
+            {projectsExpanded && (
+              <div className="space-y-0.5">
+                {projects.map((proj) => (
+                  <div
+                    key={proj.id}
+                    onClick={() => {
+                      if (onSelectProject) onSelectProject(proj.id);
+                      else if (onSwitchView) onSwitchView('projects');
+                    }}
+                    title={proj.description}
+                    className={`group flex items-center rounded-lg cursor-pointer text-xs transition-colors hover:bg-[#2f2f2f]/70 hover:text-[#ececec] ${
+                      currentView === 'projects' ? 'text-[#ececec]' : 'text-[#afafaf]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0 px-2.5 py-2">
+                      <FolderKanban size={13} className="shrink-0 opacity-70" />
+                      <span className="truncate">{proj.name}</span>
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSettingsProject(proj);
+                        setSettingsName(proj.name);
+                        setSettingsDesc(proj.description);
+                      }}
+                      className="p-1.5 mr-1 rounded-md hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <Settings size={12} />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setShowNewProjectModal(true)}
+                  className="w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs text-[#afafaf] hover:bg-[#2f2f2f]/70 hover:text-[#ececec] transition-colors"
+                >
+                  <Plus size={13} />
+                  <span>New project</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* Archived footer button */}
+        {/* Archived */}
         {archivedSessions.length > 0 && (
-          <div className="px-3 py-2 border-t border-zinc-800/60">
+          <div className="px-3 py-1.5">
             <button
               onClick={() => setShowArchivedModal(true)}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-zinc-900/50 hover:bg-zinc-900 text-xs text-zinc-400 hover:text-zinc-200 transition-colors border border-zinc-800/50"
+              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-xs text-[#afafaf] hover:bg-[#2f2f2f] hover:text-[#ececec] transition-colors"
             >
-              <div className="flex items-center gap-2">
-                <Archive size={14} />
-                <span>Archived Chats</span>
-              </div>
-              <span className="px-1.5 py-0.5 rounded bg-zinc-800 text-[10px] font-bold text-zinc-300">
-                {archivedSessions.length}
-              </span>
+              <Archive size={15} />
+              <span>Archived</span>
+              <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">{archivedSessions.length}</span>
             </button>
           </div>
         )}
 
-        {/* User Footer Profile */}
-        <div className="p-3 border-t border-zinc-800/80 bg-zinc-950/60 relative" ref={userMenuRef}>
-          <div className="flex items-center justify-between">
-            <button
-              onClick={() => setUserMenuOpen(!userMenuOpen)}
-              className="flex items-center gap-2.5 flex-1 min-w-0 p-1.5 -ml-1 rounded-xl hover:bg-zinc-900 transition-colors text-left group"
-            >
-              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-600 to-purple-600 border border-indigo-400/30 text-white font-bold flex items-center justify-center text-xs shadow-md shrink-0">
-                {user?.email?.[0]?.toUpperCase() || 'A'}
-              </div>
-              <div className="truncate flex-1">
-                <div className="text-xs font-semibold text-zinc-200 group-hover:text-white truncate">
-                  {user?.email || 'Aneeq Tariq'}
-                </div>
-                <div className="text-[10px] text-zinc-500 font-normal truncate">Enterprise Plan</div>
-              </div>
-              <MoreHorizontal size={15} className="text-zinc-500 group-hover:text-zinc-300 shrink-0" />
-            </button>
-          </div>
+        {/* User Footer */}
+        <div className="p-2 border-t border-white/5 relative" ref={userMenuRef}>
+          <button
+            onClick={() => setUserMenuOpen(!userMenuOpen)}
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#2f2f2f] transition-colors text-left"
+          >
+            <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 text-white font-semibold flex items-center justify-center text-[11px] shrink-0">
+              {user?.email?.[0]?.toUpperCase() || 'U'}
+            </div>
+            <div className="truncate flex-1">
+              <div className="text-xs font-medium text-[#ececec] truncate">{user?.email || 'User'}</div>
+            </div>
+            <MoreHorizontal size={15} className="text-[#afafaf] shrink-0" />
+          </button>
 
-          {/* User Popover Menu */}
           {userMenuOpen && (
-            <div className="absolute bottom-16 left-3 right-3 bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl p-1.5 z-50 text-xs text-zinc-300 backdrop-blur-2xl divide-y divide-zinc-800/60">
-              <div className="py-1">
+            <div className="absolute bottom-14 left-2 right-2 bg-[#2a2a2a] border border-white/10 rounded-xl shadow-2xl py-1 z-50 text-xs text-[#ececec]">
+              <button
+                onClick={() => {
+                  if (onOpenSettings) onOpenSettings();
+                  setUserMenuOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-white/10 transition-colors"
+              >
+                <Settings size={14} className="text-[#afafaf]" /> Settings
+              </button>
+              {onLogout && (
                 <button
                   onClick={() => {
-                    if (onOpenSettings) onOpenSettings();
                     setUserMenuOpen(false);
+                    onLogout();
                   }}
-                  className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-zinc-900 text-zinc-200 transition-colors font-medium"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 hover:bg-red-500/10 text-red-400 transition-colors"
                 >
-                  <Settings size={14} className="text-zinc-400" />
-                  <span>Settings & Profile</span>
+                  <LogOut size={14} /> Log out
                 </button>
-              </div>
-
-              {onLogout && (
-                <div className="py-1">
-                  <button
-                    onClick={() => {
-                      setUserMenuOpen(false);
-                      onLogout();
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl hover:bg-red-500/10 text-red-400 transition-colors font-medium"
-                  >
-                    <LogOut size={14} />
-                    <span>Log out</span>
-                  </button>
-                </div>
               )}
             </div>
           )}
@@ -605,41 +595,36 @@ export default function Sidebar({
 
       {/* Archived Chats Modal */}
       {showArchivedModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-zinc-950 border border-zinc-800 w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-800/80 pb-3">
-              <div className="flex items-center gap-2 text-sm font-bold text-zinc-100">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#2a2a2a] border border-white/10 w-full max-w-md rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2 text-sm font-semibold text-[#ececec]">
                 <Archive size={16} className="text-indigo-400" />
-                <span>Archived Conversations</span>
+                <span>Archived Chats</span>
               </div>
               <button
                 onClick={() => setShowArchivedModal(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-900 transition-colors"
+                className="p-1 rounded-lg text-[#afafaf] hover:text-white hover:bg-white/10 transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
-
             <div className="max-h-64 overflow-y-auto space-y-2 custom-scrollbar pr-1">
               {archivedSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="flex items-center justify-between p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 text-xs"
+                  className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 text-xs"
                 >
-                  <span className="truncate text-zinc-200 font-medium max-w-[220px]">
-                    {session.title}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        if (onUnarchiveSession) onUnarchiveSession(session.id);
-                        triggerToast('Unarchived');
-                      }}
-                      className="px-2.5 py-1 bg-indigo-600/20 text-indigo-400 hover:bg-indigo-600/30 rounded-lg text-[11px] font-semibold transition-colors border border-indigo-500/30"
-                    >
-                      Unarchive
-                    </button>
-                  </div>
+                  <span className="truncate text-[#ececec] font-medium max-w-[220px]">{session.title}</span>
+                  <button
+                    onClick={() => {
+                      if (onUnarchiveSession) onUnarchiveSession(session.id);
+                      triggerToast('Unarchived');
+                    }}
+                    className="px-2.5 py-1 bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 rounded-lg text-[11px] font-semibold transition-colors border border-indigo-500/30 flex items-center gap-1.5"
+                  >
+                    <ArchiveRestore size={12} /> Unarchive
+                  </button>
                 </div>
               ))}
             </div>

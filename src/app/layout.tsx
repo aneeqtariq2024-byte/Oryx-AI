@@ -8,8 +8,14 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: 'Oryx AI',
-  description: 'Your AI workspace',
+  title: 'Oryx AI — Workspace Studio',
+  description: 'Oryx AI: Your intelligent workspace powered by multiple AI engines.',
+  manifest: '/manifest.webmanifest',
+  icons: {
+    icon: '/oryx-logo.png',
+    apple: '/apple-touch-icon.png',
+    shortcut: '/oryx-logo.png',
+  },
 };
 
 export default function RootLayout({
