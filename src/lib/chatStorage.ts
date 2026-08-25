@@ -12,27 +12,38 @@ export async function loadSessionsFromDB(userId: string): Promise<ChatSession[]>
     .select('*')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
-  if (error) { console.error('[chatStorage] loadSessions error:', error.message || error.details || error); return []; }
-  return (data || []).map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    title: row.title as string,
-    projectId: row.project_id as string,
-    updatedAt: row.updated_at as string,
-    pinned: Boolean(row.pinned),
-    archived: Boolean(row.archived),
-  }));
+
+  if (error) { 
+    console.error('[chatStorage] loadSessions error:', error.message || error.details || error); 
+    return []; 
+  }
+
+  return (data || []).map((row: Record<string, unknown>) => {
+    const r = row as unknown as Record<string, unknown>;
+    return {
+      id: String(r.id),
+      title: String(r.title || ''),
+      projectId: (r.project_id as string) || '',
+      updatedAt: (r.updated_at as string) || new Date().toISOString(),
+      pinned: Boolean(r.pinned),
+      archived: Boolean(r.archived),
+    } as unknown as ChatSession;
+  });
 }
 
 export async function upsertSessionToDB(session: ChatSession, userId: string): Promise<void> {
+  const sessionRecord = session as unknown as Record<string, unknown>;
+
   const { error } = await supabase.from('chat_sessions').upsert({
     id: session.id,
     user_id: userId,
     title: session.title,
     project_id: session.projectId || null,
     updated_at: session.updatedAt || new Date().toISOString(),
-    pinned: Boolean((session as Record<string, unknown>).pinned) || false,
-    archived: Boolean((session as Record<string, unknown>).archived) || false,
+    pinned: Boolean(sessionRecord.pinned) || false,
+    archived: Boolean(sessionRecord.archived) || false,
   }, { onConflict: 'id' });
+
   if (error) console.error('[chatStorage] upsertSession error:', error.message || error);
 }
 
@@ -55,17 +66,27 @@ export async function loadMessagesFromDB(sessionId: string, userId: string): Pro
     .eq('session_id', sessionId)
     .eq('user_id', userId)
     .order('created_at', { ascending: true });
-  if (error) { console.error('[chatStorage] loadMessages error:', error.message || error); return []; }
-  return (data || []).map((row: Record<string, unknown>) => ({
-    id: row.id as string,
-    role: row.role as 'user' | 'assistant',
-    content: row.content as string,
-    type: (row.type as 'chat' | 'image' | 'code' | 'error' | undefined) || 'chat',
-    imageUrl: row.image_url as string | undefined,
-    modelUsed: row.model_used as string | undefined,
-    taskMode: row.task_mode as string | undefined,
-    timestamp: new Date(row.created_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  }));
+
+  if (error) { 
+    console.error('[chatStorage] loadMessages error:', error.message || error); 
+    return []; 
+  }
+
+  return (data || []).map((row: Record<string, unknown>) => {
+    const r = row as unknown as Record<string, unknown>;
+    return {
+      id: String(r.id),
+      role: r.role as 'user' | 'assistant',
+      content: String(r.content || ''),
+      type: (r.type as unknown) || 'chat',
+      imageUrl: r.image_url ? String(r.image_url) : undefined,
+      modelUsed: r.model_used ? String(r.model_used) : undefined,
+      taskMode: r.task_mode ? String(r.task_mode) : undefined,
+      timestamp: r.created_at 
+        ? new Date(r.created_at as string).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        : '',
+    } as unknown as ChatMessage;
+  });
 }
 
 export async function insertMessageToDB(msg: ChatMessage, sessionId: string, userId: string): Promise<void> {
