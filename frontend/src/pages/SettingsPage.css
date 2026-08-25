@@ -1,0 +1,19 @@
+.settings-page { padding: 28px; overflow-y: auto; height: 100%; }
+.settings-page h2 { font-size: 16px; letter-spacing: 2px; color: #aab6e0; margin: 0 0 6px; }
+.settings-page h3 { font-size: 13px; letter-spacing: 2px; color: #8a94b8; margin: 22px 0 10px; }
+.hint { color: #6b7599; font-size: 13px; margin-bottom: 8px; }
+.hint code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; color: #9db4ff; }
+.provider-list { display: flex; flex-direction: column; gap: 6px; }
+.provider-row { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 12px 14px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; }
+.dot.on { background: #51cf66; box-shadow: 0 0 8px #51cf66; }
+.dot.off { background: #495057; }
+.provider-row .name { font-weight: 600; color: #dde3f8; min-width: 80px; font-size: 14px; }
+.provider-row .note { color: #6b7599; font-size: 12px; }
+.tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.tool { display: flex; justify-content: space-between; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 12px; }
+.tool-name { color: #dde3f8; font-size: 12px; font-family: monospace; }
+.tool-level { font-size: 10px; padding: 2px 8px; border-radius: 10px; }
+.level-safe .tool-level { background: rgba(81,207,102,0.2); color: #51cf66; }
+.level-sensitive .tool-level { background: rgba(255,193,7,0.2); color: #ffc919; }
+.level-dangerous .tool-level { background: rgba(255,107,107,0.2); color: #ff6b6b; }

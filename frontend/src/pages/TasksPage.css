@@ -1,0 +1,111 @@
+.tasks-page {
+  padding: 28px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.tasks-page h2 {
+  font-size: 16px;
+  letter-spacing: 2px;
+  color: #aab6e0;
+  margin: 18px 0 12px;
+}
+
+.tasks-page h2:first-child {
+  margin-top: 0;
+}
+
+.add-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.add-row input {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: #e7ebff;
+  outline: none;
+}
+
+.add-row select {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #e7ebff;
+  padding: 10px;
+}
+
+.add-row button {
+  background: linear-gradient(135deg, #3b5bdb, #4c6ef5);
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  padding: 10px 22px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.task-row.done .title {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
+.task-row .title {
+  flex: 1;
+  font-size: 14px;
+  color: #dde3f8;
+}
+
+.task-row .due {
+  font-size: 12px;
+  color: #8a94b8;
+}
+
+.task-row .del {
+  background: none;
+  border: none;
+  color: #8a94b8;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.task-row .del:hover {
+  color: #ff6b6b;
+}
+
+.section-label {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #6b7599;
+  margin-top: 10px;
+}
+
+.empty {
+  color: #6b7599;
+  font-size: 13px;
+  padding: 8px 2px;
+}
+
+.reminder .bell {
+  font-size: 14px;
+}

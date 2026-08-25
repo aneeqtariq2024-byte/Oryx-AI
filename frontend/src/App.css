@@ -1,0 +1,36 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0e1f; color: #e7ebff; font-family: 'Segoe UI', system-ui, sans-serif; }
+
+.app { display: flex; height: 100vh; overflow: hidden; }
+
+.sidebar { width: 200px; background: rgba(10, 14, 35, 0.95); border-right: 1px solid rgba(255,255,255,0.08); display: flex; flex-direction: column; padding: 18px 12px; gap: 4px; }
+.logo { font-weight: 800; letter-spacing: 2px; font-size: 18px; padding: 8px 12px 22px; color: #ffc078; }
+.nav-item { display: flex; align-items: center; gap: 10px; background: none; border: none; color: #8a94b8; padding: 11px 12px; border-radius: 10px; cursor: pointer; font-size: 14px; text-align: left; transition: all 0.15s; }
+.nav-item:hover { background: rgba(255,255,255,0.06); color: #dde3f8; }
+.nav-item.active { background: linear-gradient(135deg, rgba(59,91,219,0.35), rgba(76,110,245,0.2)); color: #fff; }
+.nav-item .icon { width: 20px; }
+
+.main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+.topbar { display: flex; justify-content: space-between; align-items: center; padding: 14px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); font-weight: 700; letter-spacing: 3px; font-size: 14px; color: #aab6e0; }
+.status { font-size: 11px; letter-spacing: 1px; }
+.status.online { color: #51cf66; }
+.status.offline { color: #ff6b6b; }
+
+.content { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+
+.dashboard { flex: 1; display: flex; min-height: 0; }
+.core-wrap { flex: 1; position: relative; }
+.activity-panel { width: 300px; border-left: 1px solid rgba(255,255,255,0.08); padding: 18px; overflow-y: auto; }
+.panel-title { font-size: 11px; letter-spacing: 2px; color: #6b7599; margin-bottom: 14px; }
+.activity-row { display: flex; flex-direction: column; gap: 2px; background: rgba(255,255,255,0.04); border-left: 2px solid #4c6ef5; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }
+.evt-type { font-size: 10px; letter-spacing: 1px; color: #9db4ff; text-transform: uppercase; }
+.evt-msg { font-size: 12px; color: #dde3f8; }
+.evt-time { font-size: 10px; color: #6b7599; align-self: flex-end; }
+.activity-empty { color: #6b7599; font-size: 12px; }
+
+.commandbar { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-top: 1px solid rgba(255,255,255,0.08); background: rgba(10,14,35,0.9); }
+.mic-icon { font-size: 18px; }
+.commandbar input { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 24px; padding: 12px 20px; color: #e7ebff; font-size: 14px; outline: none; }
+.commandbar input:focus { border-color: rgba(120,160,255,0.5); }
+.commandbar .send { background: linear-gradient(135deg,#3b5bdb,#4c6ef5); border: none; border-radius: 24px; color: #fff; padding: 12px 26px; cursor: pointer; font-weight: 700; letter-spacing: 1px; font-size: 12px; }

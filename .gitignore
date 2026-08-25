@@ -1,7 +1,5 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
-/node_modules
+# Dependencies
+node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -10,35 +8,40 @@
 !.yarn/releases
 !.yarn/versions
 
-# testing
-/coverage
+# Environment & Secrets (Supabase keys safe rahengi)
+.env
+.env*
+.env.local
+*.pem
+*.key
 
-# next.js
+# Build & TypeScript Output
+/build
+dist/
+*.tsbuildinfo
+next-env.d.ts
 /.next/
 /out/
 
-# production
-/build
-
-# misc
+# IDE, OS & Logs
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
-*.pem
-
-# debug
+Thumbs.db
+Desktop.ini
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
-
-# vercel
+# Deployments & Python
 .vercel
-
-# typescript
-*.tsbuildinfo
-next-env.d.ts
-
-# Local Netlify folder
 .netlify
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/

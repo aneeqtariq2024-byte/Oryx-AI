@@ -1,0 +1,12 @@
+.research-page { padding: 28px; overflow-y: auto; height: 100%; }
+.research-page h2 { font-size: 16px; letter-spacing: 2px; color: #aab6e0; margin: 0 0 6px; }
+.research-page h3 { font-size: 13px; letter-spacing: 2px; color: #8a94b8; margin: 22px 0 10px; }
+.hint { color: #6b7599; font-size: 13px; margin-bottom: 18px; }
+.add-row { display: flex; gap: 10px; margin-bottom: 18px; }
+.add-row input { flex: 1; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 10px 14px; color: #e7ebff; outline: none; }
+.add-row button { background: linear-gradient(135deg,#3b5bdb,#4c6ef5); border: none; border-radius: 8px; color: #fff; padding: 10px 22px; cursor: pointer; font-weight: 600; }
+.add-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+.summary { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 18px; color: #dde3f8; font-size: 14px; line-height: 1.7; white-space: pre-wrap; }
+.sources { display: flex; flex-direction: column; gap: 6px; }
+.source { color: #9db4ff; font-size: 13px; text-decoration: none; padding: 8px 12px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+.source:hover { background: rgba(255,255,255,0.07); }
